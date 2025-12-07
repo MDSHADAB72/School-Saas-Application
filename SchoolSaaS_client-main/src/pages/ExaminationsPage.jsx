@@ -131,7 +131,7 @@ export function ExaminationsPage() {
     subjects: [{ name: '', maxMarks: 100, passingMarks: 33 }]
   });
 
-  const isAdmin = user?.role === 'school_admin';
+  const isAdmin = false; // School admin cannot create exams
   const isTeacher = user?.role === 'teacher' || user?.role === 'school_admin';
 
   useEffect(() => {
@@ -270,13 +270,8 @@ export function ExaminationsPage() {
             <Typography variant="h4" sx={{ fontWeight: 'bold' }}>
               Examinations
             </Typography>
-            {isAdmin && (
-              <Box sx={{ display: 'flex', gap: 2 }}>
-                <Button variant="contained" startIcon={<AddIcon />} onClick={() => setOpenDialog(true)}>
-                  Create Examination
-                </Button>
-                <CreateExamControllerButton />
-              </Box>
+            {user?.role === 'school_admin' && (
+              <CreateExamControllerButton />
             )}
           </Box>
 
@@ -527,13 +522,22 @@ export function ExaminationsPage() {
                             ) : '-'}
                           </TableCell>
                           <TableCell>
-                            <Button
-                              size="small"
-                              variant="contained"
-                              onClick={() => handleSubmitMarks(student)}
-                            >
-                              {result ? 'Edit' : 'Submit'} Marks
-                            </Button>
+                            {user?.role !== 'school_admin' && (
+                              <Button
+                                size="small"
+                                variant="contained"
+                                onClick={() => handleSubmitMarks(student)}
+                              >
+                                {result ? 'Edit' : 'Submit'} Marks
+                              </Button>
+                            )}
+                            {user?.role === 'school_admin' && result && (
+                              <Chip 
+                                label="View Only" 
+                                size="small"
+                                color="default"
+                              />
+                            )}
                           </TableCell>
                         </TableRow>
                       );
