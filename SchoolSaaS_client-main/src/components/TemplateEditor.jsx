@@ -34,7 +34,7 @@ export function TemplateEditor() {
 
   const [template, setTemplate] = useState({
     name: '',
-    type: '',
+    type: 'ADMIT_CARD',
     html: '',
     css: '',
     isDefault: false
@@ -53,7 +53,14 @@ export function TemplateEditor() {
     try {
       setLoading(true);
       const response = await templateService.getTemplate(id);
-      setTemplate(response.data);
+      const data = response.data.data || response.data;
+      setTemplate({
+        name: data.name || '',
+        type: data.type || 'ADMIT_CARD',
+        html: data.html || '',
+        css: data.css || '',
+        isDefault: data.isDefault || false
+      });
     } catch (error) {
       setError('Failed to load template');
     } finally {
@@ -82,10 +89,18 @@ export function TemplateEditor() {
 
   const handlePreview = async () => {
     try {
-      const response = await templateService.previewTemplate(template.html, template.css);
-      setPreview(response.data);
+      setError('');
+      if (!template.html || template.html.trim() === '') {
+        setError('HTML content is required for preview');
+        return;
+      }
+      const response = await templateService.previewTemplate(template.html, template.css || '');
+      const previewData = response.data.data || response.data;
+      console.log('Preview data:', previewData);
+      setPreview(previewData);
     } catch (error) {
-      setError('Failed to generate preview');
+      console.error('Preview error:', error);
+      setError(error.response?.data?.message || 'Failed to generate preview');
     }
   };
 

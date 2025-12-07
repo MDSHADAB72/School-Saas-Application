@@ -26,15 +26,23 @@ export function TemplatePreviewPage() {
     try {
       setLoading(true);
       const templateResponse = await templateService.getTemplate(id);
-      setTemplate(templateResponse.data);
+      const templateData = templateResponse.data.data || templateResponse.data;
+      setTemplate(templateData);
+
+      if (!templateData.html || templateData.html.trim() === '') {
+        setError('Template has no HTML content');
+        setLoading(false);
+        return;
+      }
 
       const previewResponse = await templateService.previewTemplate(
-        templateResponse.data.html,
-        templateResponse.data.css
+        templateData.html,
+        templateData.css || ''
       );
-      setPreview(previewResponse.data);
+      setPreview(previewResponse.data.data || previewResponse.data);
     } catch (error) {
-      setError('Failed to load template preview');
+      console.error('Preview error:', error);
+      setError(error.response?.data?.message || 'Failed to load template preview');
     } finally {
       setLoading(false);
     }

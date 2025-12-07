@@ -16,8 +16,11 @@ api.interceptors.request.use((config) => {
 });
 
 export const templateService = {
-  // Get all templates
-  getTemplates: () => api.get('/templates'),
+  // Get all templates by school
+  getTemplates: (schoolId, type = null) => {
+    const params = type ? { type } : {};
+    return api.get(`/templates/school/${schoolId}`, { params });
+  },
   
   // Get single template
   getTemplate: (id) => api.get(`/templates/${id}`),
@@ -30,4 +33,13 @@ export const templateService = {
   
   // Delete template
   deleteTemplate: (id) => api.delete(`/templates/${id}`),
+  
+  // Set default template
+  setDefaultTemplate: (id) => api.post(`/templates/${id}/set-default`),
+  
+  // Preview template
+  previewTemplate: (html, css) => api.post('/templates/preview', { html, css }),
+  
+  // Render template with data
+  renderTemplate: (templateId, data) => api.post('/templates/render', { templateId, data }),
 };

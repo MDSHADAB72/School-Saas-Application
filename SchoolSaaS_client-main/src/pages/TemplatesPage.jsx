@@ -29,16 +29,21 @@ export function TemplatesPage() {
   const [deleteDialog, setDeleteDialog] = useState({ open: false, template: null });
 
   useEffect(() => {
-    fetchTemplates();
-  }, [filterType]);
+    if (user && user.schoolId) {
+      fetchTemplates();
+    }
+  }, [filterType, user]);
 
   const fetchTemplates = async () => {
     try {
+      if (!user || !user.schoolId) return;
       setLoading(true);
       const response = await templateService.getTemplates(user.schoolId, filterType || null);
-      setTemplates(response.data);
+      const data = response.data.data || response.data;
+      setTemplates(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error fetching templates:', error);
+      setTemplates([]);
     } finally {
       setLoading(false);
     }
