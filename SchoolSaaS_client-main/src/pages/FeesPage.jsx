@@ -9,7 +9,7 @@ import { useAuth } from '../hooks/useAuth.js';
 import { Header } from '../components/common/Header.jsx';
 import { Sidebar } from '../components/common/Sidebar.jsx';
 import { feeService } from '../services/api.js';
-import templateService from '../services/templateService.js';
+import { templateService } from '../services/templateService.js';
 import { useNotification } from '../components/common/Notification.jsx';
 import { LoadingBar } from '../components/common/LoadingBar.jsx';
 
@@ -162,10 +162,15 @@ export function FeesPage() {
       
       const response = await feeService.printReceipt(fee._id);
       
-      if (response.data.success) {
-        // Create download link
+      if (response.data.success && response.data.data?.pdf) {
+        const pdfData = response.data.data.pdf;
+        if (typeof pdfData !== 'string' || pdfData.length === 0) {
+          showNotification('Invalid receipt data', 'error');
+          return;
+        }
+        
         const pdfBlob = new Blob([
-          Uint8Array.from(atob(response.data.data.pdf), c => c.charCodeAt(0))
+          Uint8Array.from(atob(pdfData), c => c.charCodeAt(0))
         ], { type: 'application/pdf' });
         
         const url = window.URL.createObjectURL(pdfBlob);
@@ -299,6 +304,7 @@ export function FeesPage() {
                   value={formData.class}
                   onChange={handleFormChange}
                   fullWidth
+                  helperText=""
                 />
                 <TextField
                   label="Section"
@@ -306,6 +312,7 @@ export function FeesPage() {
                   value={formData.section}
                   onChange={handleFormChange}
                   fullWidth
+                  helperText=""
                 />
                 <TextField
                   label="Fee Month"
@@ -314,6 +321,7 @@ export function FeesPage() {
                   onChange={handleFormChange}
                   fullWidth
                   placeholder="December 2024"
+                  helperText=""
                 />
                 <TextField
                   label="Amount"
@@ -322,6 +330,7 @@ export function FeesPage() {
                   value={formData.amount}
                   onChange={handleFormChange}
                   fullWidth
+                  helperText=""
                 />
                 <TextField
                   label="Fee Type"
@@ -331,6 +340,7 @@ export function FeesPage() {
                   onChange={handleFormChange}
                   fullWidth
                   SelectProps={{ native: true }}
+                  helperText=""
                 >
                   <option value="Tuition">Tuition</option>
                   <option value="Transport">Transport</option>
@@ -346,6 +356,7 @@ export function FeesPage() {
                   onChange={handleFormChange}
                   fullWidth
                   InputLabelProps={{ shrink: true }}
+                  helperText=""
                 />
                 <TextField
                   label="Notes"
@@ -355,6 +366,7 @@ export function FeesPage() {
                   fullWidth
                   multiline
                   rows={3}
+                  helperText=""
                 />
               </Box>
             </DialogContent>
@@ -381,6 +393,7 @@ export function FeesPage() {
                   onChange={(e) => setBulkFormData(prev => ({ ...prev, feeMonth: e.target.value }))}
                   fullWidth
                   placeholder="December 2024"
+                  helperText=""
                 />
                 <TextField
                   label="Fee Type"
@@ -390,6 +403,7 @@ export function FeesPage() {
                   onChange={(e) => setBulkFormData(prev => ({ ...prev, feeType: e.target.value }))}
                   fullWidth
                   SelectProps={{ native: true }}
+                  helperText=""
                 >
                   <option value="Tuition">Tuition</option>
                   <option value="Transport">Transport</option>
@@ -405,6 +419,7 @@ export function FeesPage() {
                   onChange={(e) => setBulkFormData(prev => ({ ...prev, dueDate: e.target.value }))}
                   fullWidth
                   InputLabelProps={{ shrink: true }}
+                  helperText=""
                 />
               </Box>
             </DialogContent>

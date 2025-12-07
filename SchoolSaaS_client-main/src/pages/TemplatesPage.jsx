@@ -10,7 +10,7 @@ import {
 } from '@mui/icons-material';
 import { DashboardLayout } from '../components/common/DashboardLayout';
 import { AuthContext } from '../context/AuthContext';
-import templateService from '../services/templateService';
+import { templateService } from '../services/templateService';
 
 const TEMPLATE_TYPES = [
   { value: 'FEE_RECEIPT', label: 'Fee Receipt' },

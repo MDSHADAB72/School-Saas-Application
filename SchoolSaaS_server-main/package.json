@@ -10,7 +10,8 @@
     "seed": "node seeders/seedDatabase.js",
     "reset": "node resetDatabase.js",
     "verify": "node verifyDemoAccounts.js",
-    "fix-admin": "node fixSchoolAdmin.js"
+    "fix-admin": "node fixSchoolAdmin.js",
+    "fix-timetable": "node fixTimetableIndex.js"
   },
   "keywords": [
     "school",

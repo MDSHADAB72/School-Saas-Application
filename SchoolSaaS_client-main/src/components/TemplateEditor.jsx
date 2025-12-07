@@ -7,7 +7,7 @@ import {
 import { Save as SaveIcon, Preview as PreviewIcon } from '@mui/icons-material';
 import { DashboardLayout } from './common/DashboardLayout';
 import { AuthContext } from '../context/AuthContext';
-import templateService from '../services/templateService';
+import { templateService } from '../services/templateService';
 
 const TEMPLATE_TYPES = [
   { value: 'FEE_RECEIPT', label: 'Fee Receipt' },

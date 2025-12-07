@@ -4,108 +4,16 @@ import AddIcon from '@mui/icons-material/Add';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
-import PersonAddIcon from '@mui/icons-material/PersonAdd';
 
 import { useAuth } from '../hooks/useAuth';
 import { Header } from '../components/common/Header';
 import { Sidebar } from '../components/common/Sidebar';
-import { examinationService, studentService } from '../services/api';
-import { templateService } from '../services/templateService';
+import { examinationService } from '../services/api';
 import { useNotification } from '../components/common/Notification';
 import { useNavigate } from 'react-router-dom';
 import { LoadingBar } from '../components/common/LoadingBar';
-import api from '../services/api';
 
-// Create Exam Controller Button Component
-function CreateExamControllerButton() {
-  const [open, setOpen] = useState(false);
-  const [formData, setFormData] = useState({
-    firstName: '',
-    lastName: '',
-    email: '',
-    password: '',
-    phoneNumber: ''
-  });
-  const { showNotification } = useNotification();
-
-  const handleSubmit = async () => {
-    try {
-      await api.post('/auth/create-exam-controller', formData);
-      showNotification('Exam Controller created successfully', 'success');
-      setOpen(false);
-      setFormData({ firstName: '', lastName: '', email: '', password: '', phoneNumber: '' });
-    } catch (error) {
-      showNotification(error.response?.data?.message || 'Error creating exam controller', 'error');
-    }
-  };
-
-  return (
-    <>
-      <Button 
-        variant="outlined" 
-        startIcon={<PersonAddIcon />} 
-        onClick={() => setOpen(true)}
-        color="secondary"
-      >
-        Create Exam Controller
-      </Button>
-      
-      <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Create Exam Controller</DialogTitle>
-        <DialogContent>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2 }}>
-            <TextField
-              label="First Name"
-              value={formData.firstName}
-              onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-              required
-              fullWidth
-              helperText=""
-            />
-            <TextField
-              label="Last Name"
-              value={formData.lastName}
-              onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-              fullWidth
-              helperText=""
-            />
-            <TextField
-              label="Email"
-              type="email"
-              value={formData.email}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              required
-              fullWidth
-              helperText=""
-            />
-            <TextField
-              label="Password"
-              type="password"
-              value={formData.password}
-              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-              required
-              fullWidth
-              helperText=""
-            />
-            <TextField
-              label="Phone Number"
-              value={formData.phoneNumber}
-              onChange={(e) => setFormData({ ...formData, phoneNumber: e.target.value })}
-              fullWidth
-              helperText=""
-            />
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setOpen(false)}>Cancel</Button>
-          <Button onClick={handleSubmit} variant="contained">Create</Button>
-        </DialogActions>
-      </Dialog>
-    </>
-  );
-}
-
-export function ExaminationsPage() {
+export function ExamControllerPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [examinations, setExaminations] = useState([]);
@@ -131,8 +39,8 @@ export function ExaminationsPage() {
     subjects: [{ name: '', maxMarks: 100, passingMarks: 33 }]
   });
 
-  const isAdmin = user?.role === 'school_admin';
-  const isTeacher = user?.role === 'teacher' || user?.role === 'school_admin';
+  const isAdmin = user?.role === 'exam_controller';
+  const isTeacher = user?.role === 'exam_controller';
 
   useEffect(() => {
     fetchExaminations();
@@ -141,8 +49,8 @@ export function ExaminationsPage() {
   const fetchExaminations = async () => {
     try {
       setLoading(true);
-      const response = await examinationService.getAllExaminations({ page: 1, limit: 100 });
-      setExaminations(response.data.examinations);
+      const response = await examinationService.getAllExaminations();
+      setExaminations(response.data.data || []);
     } catch (error) {
       showNotification('Error fetching examinations', 'error');
     } finally {
@@ -224,12 +132,9 @@ export function ExaminationsPage() {
   const handleViewResults = async (exam) => {
     try {
       setSelectedExam(exam);
-      const [studentsRes, resultsRes] = await Promise.all([
-        studentService.getAllStudents({ class: exam.class, limit: 1000 }),
-        examinationService.getExaminationResults(exam._id)
-      ]);
-      setStudents(studentsRes.data.students);
-      setResults(resultsRes.data.results);
+      // For now, just show empty results dialog
+      setStudents([]);
+      setResults([]);
       setOpenResultDialog(true);
     } catch (error) {
       showNotification('Error fetching results', 'error');
@@ -256,7 +161,15 @@ export function ExaminationsPage() {
     });
   };
 
-
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'draft': return 'default';
+      case 'published': return 'primary';
+      case 'locked': return 'warning';
+      case 'completed': return 'success';
+      default: return 'default';
+    }
+  };
 
   if (loading) return <LoadingBar />;
 
@@ -268,15 +181,12 @@ export function ExaminationsPage() {
         <Container maxWidth="lg" sx={{ py: 4 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
             <Typography variant="h4" sx={{ fontWeight: 'bold' }}>
-              Examinations
+              Exam Schedule & Management
             </Typography>
             {isAdmin && (
-              <Box sx={{ display: 'flex', gap: 2 }}>
-                <Button variant="contained" startIcon={<AddIcon />} onClick={() => setOpenDialog(true)}>
-                  Create Examination
-                </Button>
-                <CreateExamControllerButton />
-              </Box>
+              <Button variant="contained" startIcon={<AddIcon />} onClick={() => setOpenDialog(true)}>
+                Create Examination
+              </Button>
             )}
           </Box>
 
@@ -297,11 +207,11 @@ export function ExaminationsPage() {
               <TableBody>
                 {examinations.map((exam) => (
                   <TableRow key={exam._id} hover>
-                    <TableCell>{exam.title}</TableCell>
-                    <TableCell>{exam.code}</TableCell>
-                    <TableCell>{exam.class}</TableCell>
-                    <TableCell>{exam.type}</TableCell>
-                    <TableCell>{new Date(exam.date).toLocaleDateString()}</TableCell>
+                    <TableCell>{exam.title || exam.name}</TableCell>
+                    <TableCell>{exam.code || exam.category}</TableCell>
+                    <TableCell>{exam.class || exam.classes?.join(', ')}</TableCell>
+                    <TableCell>{exam.type || exam.category}</TableCell>
+                    <TableCell>{new Date(exam.date || exam.createdAt).toLocaleDateString()}</TableCell>
                     <TableCell>{exam.subjects?.length || 0}</TableCell>
                     <TableCell>
                       <Chip 

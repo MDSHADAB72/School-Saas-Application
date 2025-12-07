@@ -19,7 +19,7 @@ export function LoginPage() {
     { value: 'school_admin', label: 'School Admin' },
     { value: 'teacher', label: 'Teacher' },
     { value: 'student', label: 'Student' },
-    { value: 'parent', label: 'Parent' }
+    { value: 'exam_controller', label: 'Exam Controller' }
   ];
 
   const handleChange = (e) => {
@@ -49,8 +49,11 @@ export function LoginPage() {
         return;
       }
       
+      console.log('Login successful, token:', token);
+      console.log('User data:', user);
       login(user, token);
-      navigate(`/dashboard`);
+      console.log('Token after login:', localStorage.getItem('token'));
+      navigate('/dashboard');
     } catch (err) {
       setError(err.response?.data?.message || 'Login failed');
     } finally {
@@ -188,6 +191,7 @@ export function LoginPage() {
               <Typography variant="body2" sx={{ textAlign: 'center', color: 'text.secondary', fontSize: '0.8rem' }}>
                 Parent: vikram@parent.com
               </Typography>
+
             </Box>
           </Paper>
         </Container>

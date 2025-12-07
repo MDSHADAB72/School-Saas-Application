@@ -2,6 +2,7 @@ import express from 'express';
 import { authenticate, authorize } from '../middleware/authMiddleware.js';
 import {
   getAllStudents,
+  getStudentsByClass,
   getStudentById,
   createStudent,
   bulkCreateStudents,
@@ -12,6 +13,7 @@ import {
 
 const router = express.Router();
 
+router.get('/by-class', authenticate, getStudentsByClass);
 router.get('/', authenticate, getAllStudents);
 router.get('/:id', authenticate, getStudentById);
 router.post('/', authenticate, authorize(['school_admin']), createStudent);

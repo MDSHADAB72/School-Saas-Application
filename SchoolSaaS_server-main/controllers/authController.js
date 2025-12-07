@@ -299,3 +299,53 @@ export const registerSchool = async (req, res) => {
 export const logout = (req, res) => {
   res.json({ message: 'Logged out successfully' });
 };
+
+// Create exam controller (only school admin can create)
+export const createExamController = async (req, res) => {
+  try {
+    const { firstName, lastName, email, password, phoneNumber } = req.body;
+
+    // Only school admin can create exam controller
+    if (req.user.role !== 'school_admin') {
+      return res.status(403).json({ message: 'Only school admin can create exam controller' });
+    }
+
+    // Check if user already exists
+    const existingUser = await User.findOne({ email: email.toLowerCase() });
+    if (existingUser) {
+      return res.status(400).json({ message: 'Email already exists' });
+    }
+
+    // Hash password
+    const hashedPassword = await hashPassword(password);
+
+    // Create exam controller user
+    const examController = new User({
+      firstName,
+      lastName,
+      email: email.toLowerCase(),
+      password: hashedPassword,
+      role: 'exam_controller',
+      schoolId: req.user.schoolId,
+      phoneNumber,
+      active: true
+    });
+
+    await examController.save();
+
+    res.status(201).json({
+      success: true,
+      message: 'Exam controller created successfully',
+      user: {
+        id: examController._id,
+        firstName: examController.firstName,
+        lastName: examController.lastName,
+        email: examController.email,
+        role: examController.role,
+        schoolId: examController.schoolId
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};

@@ -5,7 +5,7 @@ import { useAuth } from '../hooks/useAuth';
 import { Header } from '../components/common/Header';
 import { Sidebar } from '../components/common/Sidebar';
 import { examinationService, studentService } from '../services/api';
-import templateService from '../services/templateService';
+import { templateService } from '../services/templateService';
 import { useNotification } from '../components/common/Notification';
 import { useLocation } from 'react-router-dom';
 import { LoadingBar } from '../components/common/LoadingBar';

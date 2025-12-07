@@ -7,7 +7,7 @@ import {
   ArrowBack as ArrowBackIcon, Download as DownloadIcon, Edit as EditIcon
 } from '@mui/icons-material';
 import { DashboardLayout } from '../components/common/DashboardLayout';
-import templateService from '../services/templateService';
+import { templateService } from '../services/templateService';
 
 export function TemplatePreviewPage() {
   const { id } = useParams();

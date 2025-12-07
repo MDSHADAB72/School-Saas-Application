@@ -12,6 +12,7 @@ import PaymentIcon from '@mui/icons-material/Payment';
 import AnnouncementIcon from '@mui/icons-material/Announcement';
 import SettingsIcon from '@mui/icons-material/Settings';
 import DescriptionIcon from '@mui/icons-material/Description';
+import ScheduleIcon from '@mui/icons-material/Schedule';
 
 const DRAWER_WIDTH = 260;
 const MOBILE_DRAWER_WIDTH = 280;
@@ -53,6 +54,10 @@ const getRoleMenuItems = (role) => {
       { label: 'Child Attendance', icon: EventIcon, path: '/attendance', roles: ['parent'] },
       { label: 'Child Results', icon: AssignmentIcon, path: '/results', roles: ['parent'] },
       { label: 'Fees', icon: PaymentIcon, path: '/fees', roles: ['parent'] },
+    ],
+    exam_controller: [
+      { label: 'Dashboard', icon: DashboardIcon, path: '/examcontroller/dashboard', roles: ['exam_controller'] },
+      { label: 'Timetable Management', icon: ScheduleIcon, path: '/examcontroller/timetable', roles: ['exam_controller'] },
     ],
   };
 

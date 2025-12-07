@@ -1,46 +1,33 @@
-import api from './api.js';
+import axios from 'axios';
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+
+const api = axios.create({
+  baseURL: API_BASE_URL,
+});
+
+// Add token to requests
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
 
 export const templateService = {
-  getTemplates: async (schoolId, type = null) => {
-    const params = type ? { type } : {};
-    const response = await api.get(`/templates/school/${schoolId}`, { params });
-    return response.data;
-  },
-
-  getTemplate: async (id) => {
-    const response = await api.get(`/templates/${id}`);
-    return response.data;
-  },
-
-  createTemplate: async (templateData) => {
-    const response = await api.post('/templates', templateData);
-    return response.data;
-  },
-
-  updateTemplate: async (id, templateData) => {
-    const response = await api.put(`/templates/${id}`, templateData);
-    return response.data;
-  },
-
-  deleteTemplate: async (id) => {
-    const response = await api.delete(`/templates/${id}`);
-    return response.data;
-  },
-
-  setDefaultTemplate: async (id) => {
-    const response = await api.post(`/templates/${id}/set-default`);
-    return response.data;
-  },
-
-  renderTemplate: async (templateId, data = null) => {
-    const response = await api.post('/templates/render', { templateId, data });
-    return response.data;
-  },
-
-  previewTemplate: async (html, css = '') => {
-    const response = await api.post('/templates/preview', { html, css });
-    return response.data;
-  }
+  // Get all templates
+  getTemplates: () => api.get('/templates'),
+  
+  // Get single template
+  getTemplate: (id) => api.get(`/templates/${id}`),
+  
+  // Create template
+  createTemplate: (templateData) => api.post('/templates', templateData),
+  
+  // Update template
+  updateTemplate: (id, templateData) => api.put(`/templates/${id}`, templateData),
+  
+  // Delete template
+  deleteTemplate: (id) => api.delete(`/templates/${id}`),
 };
-
-export default templateService;

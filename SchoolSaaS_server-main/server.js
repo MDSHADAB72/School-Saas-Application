@@ -17,6 +17,7 @@ import feeRoutes from './routes/feeRoutes.js';
 import announcementRoutes from './routes/announcementRoutes.js';
 import assignmentRoutes from './routes/assignmentRoutes.js';
 import activityRoutes from './routes/activityRoutes.js';
+import timetableRoutes from './routes/timetableRoutes.js';
 import templateRoutes from './routes/templateRoutes.js';
 
 dotenv.config();
@@ -59,6 +60,7 @@ app.use('/api/fees', feeRoutes);
 app.use('/api/announcements', announcementRoutes);
 app.use('/api/assignments', assignmentRoutes);
 app.use('/api/activities', activityRoutes);
+app.use('/api/timetable', timetableRoutes);
 app.use('/api/templates', templateRoutes);
 
 // Health check endpoint

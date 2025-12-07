@@ -35,6 +35,7 @@ export const schoolService = {
 
 export const studentService = {
   getAllStudents: (params) => api.get('/students', { params }),
+  getStudentsByClass: () => api.get('/students/by-class'),
   getStudentById: (id) => api.get(`/students/${id}`),
   createStudent: (data) => api.post('/students', data),
   bulkCreateStudents: (students) => api.post('/students/bulk', { students }),
@@ -115,6 +116,24 @@ export const assignmentService = {
 export const activityService = {
   logActivity: (data) => api.post('/activities', data),
   getActivities: (params) => api.get('/activities', { params }),
+};
+
+export const timetableService = {
+  // Period Configuration
+  createPeriodConfiguration: (data) => api.post('/timetable/period-config', data),
+  getPeriodConfigurations: () => api.get('/timetable/period-config'),
+  getActivePeriodConfiguration: (academicYear) => api.get(`/timetable/period-config/${academicYear}`),
+  updatePeriodConfiguration: (id, data) => api.put(`/timetable/period-config/${id}`, data),
+  deletePeriodConfiguration: (id) => api.delete(`/timetable/period-config/${id}`),
+  
+  // Teachers and subjects
+  getTeachers: () => api.get('/timetable/teachers'),
+  
+  // Conflict detection
+  detectConflicts: (academicYear) => api.get(`/timetable/conflicts/${academicYear}`),
+  
+  // Validation
+  validateTimetable: (data) => api.post('/timetable/validate', data),
 };
 
 export const getFileUrl = (fileUrl) => {

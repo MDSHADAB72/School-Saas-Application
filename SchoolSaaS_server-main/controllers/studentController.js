@@ -1,6 +1,58 @@
 import Student from '../models/Student.js';
 import User from '../models/User.js';
 import bcrypt from 'bcryptjs';
+import mongoose from 'mongoose';
+
+export const getStudentsByClass = async (req, res) => {
+  try {
+    const schoolId = req.user.schoolId;
+
+    if (!schoolId) {
+      return res.status(400).json({ message: 'School ID is required' });
+    }
+
+    const classes = await Student.aggregate([
+      { $match: { schoolId: new mongoose.Types.ObjectId(schoolId) } },
+      {
+        $group: {
+          _id: { class: '$class', section: '$section' },
+          totalStudents: { $sum: 1 },
+          studentIds: { $push: '$_id' }
+        }
+      },
+      {
+        $project: {
+          _id: 0,
+          class: '$_id.class',
+          section: '$_id.section',
+          totalStudents: 1,
+          studentIds: 1
+        }
+      },
+      { $sort: { class: 1, section: 1 } }
+    ]);
+
+    const Fee = (await import('../models/Fee.js')).default;
+    const classesWithStats = await Promise.all(classes.map(async (classGroup) => {
+      const studentIds = classGroup.studentIds;
+      const pendingFeesCount = await Fee.countDocuments({
+        studentId: { $in: studentIds },
+        status: { $in: ['Pending', 'Overdue'] }
+      });
+      
+      return {
+        ...classGroup,
+        pendingFeesCount,
+        paidFeesCount: classGroup.totalStudents - pendingFeesCount
+      };
+    }));
+
+    res.json({ classes: classesWithStats });
+  } catch (error) {
+    console.error('Error fetching students by class:', error);
+    res.status(500).json({ message: 'Error fetching students by class', error: error.message });
+  }
+};
 
 export const getAllStudents = async (req, res) => {
   try {
