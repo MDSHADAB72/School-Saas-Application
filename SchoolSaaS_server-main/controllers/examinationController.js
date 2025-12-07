@@ -29,7 +29,7 @@ export const getAllExaminations = async (req, res) => {
         filter.sections = student.section;
       }
       filter.status = 'public';
-    } else if (role === 'school_admin') {
+    } else if (role === 'school_admin' || role === 'exam_controller') {
       if (className) filter.class = className;
       if (status) filter.status = status;
     } else {
@@ -213,7 +213,8 @@ export const submitResult = async (req, res) => {
         overallStatus,
         remarks,
         isDraft: isDraft !== false,
-        publishedAt: isDraft === false ? new Date() : null,
+        approvalStatus: 'pending',
+        publishedAt: null,
         createdBy: userId || _id
       },
       { upsert: true, new: true }
@@ -264,7 +265,8 @@ export const getMyResults = async (req, res) => {
 
     const results = await Result.find({ 
       studentId: student._id,
-      isDraft: false
+      isDraft: false,
+      approvalStatus: 'approved'
     })
       .populate({
         path: 'examinationId',
@@ -352,6 +354,90 @@ export const publishResult = async (req, res) => {
     res.json({ message: 'Result published successfully', result });
   } catch (error) {
     res.status(500).json({ message: 'Error publishing result', error: error.message });
+  }
+};
+
+export const approveResult = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userId, _id } = req.user;
+
+    const result = await Result.findByIdAndUpdate(
+      id,
+      { 
+        approvalStatus: 'approved',
+        approvedBy: userId || _id,
+        approvedAt: new Date(),
+        isDraft: false,
+        publishedAt: new Date()
+      },
+      { new: true }
+    );
+
+    if (!result) {
+      return res.status(404).json({ message: 'Result not found' });
+    }
+
+    res.json({ message: 'Result approved and published successfully', result });
+  } catch (error) {
+    res.status(500).json({ message: 'Error approving result', error: error.message });
+  }
+};
+
+export const rejectResult = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { rejectionReason } = req.body;
+    const { userId, _id } = req.user;
+
+    const result = await Result.findByIdAndUpdate(
+      id,
+      { 
+        approvalStatus: 'rejected',
+        approvedBy: userId || _id,
+        approvedAt: new Date(),
+        rejectionReason: rejectionReason || 'No reason provided'
+      },
+      { new: true }
+    );
+
+    if (!result) {
+      return res.status(404).json({ message: 'Result not found' });
+    }
+
+    res.json({ message: 'Result rejected', result });
+  } catch (error) {
+    res.status(500).json({ message: 'Error rejecting result', error: error.message });
+  }
+};
+
+export const getPendingResults = async (req, res) => {
+  try {
+    const { schoolId } = req.user;
+    const { examinationId } = req.query;
+
+    const filter = { 
+      schoolId,
+      approvalStatus: 'pending',
+      isDraft: false
+    };
+
+    if (examinationId) {
+      filter.examinationId = examinationId;
+    }
+
+    const results = await Result.find(filter)
+      .populate({
+        path: 'studentId',
+        populate: { path: 'userId', select: 'firstName lastName' }
+      })
+      .populate('examinationId', 'title code type date')
+      .populate('createdBy', 'firstName lastName')
+      .sort({ createdAt: -1 });
+
+    res.json({ results, count: results.length });
+  } catch (error) {
+    res.status(500).json({ message: 'Error fetching pending results', error: error.message });
   }
 };
 

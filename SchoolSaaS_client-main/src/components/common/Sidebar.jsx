@@ -57,6 +57,8 @@ const getRoleMenuItems = (role) => {
     ],
     exam_controller: [
       { label: 'Dashboard', icon: DashboardIcon, path: '/examcontroller/dashboard', roles: ['exam_controller'] },
+      { label: 'Examinations', icon: AssignmentIcon, path: '/examcontroller/examinations', roles: ['exam_controller'] },
+      { label: 'Results', icon: AssignmentIcon, path: '/results', roles: ['exam_controller'] },
       { label: 'Timetable Management', icon: ScheduleIcon, path: '/examcontroller/timetable', roles: ['exam_controller'] },
     ],
   };

@@ -17,6 +17,20 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      console.error('401 Unauthorized - Token may be invalid or expired');
+      console.log('Current token:', localStorage.getItem('token'));
+      console.log('Current user:', localStorage.getItem('user'));
+      // Optionally redirect to login
+      // window.location.href = '/login';
+    }
+    return Promise.reject(error);
+  }
+);
+
 export const authService = {
   login: (email, password) => api.post('/auth/login', { email, password }),
   register: (data) => api.post('/auth/register', data),
@@ -72,6 +86,9 @@ export const examinationService = {
   updateExaminationStatus: (id, status) => api.put(`/examinations/${id}/status`, { status }),
   submitResult: (data) => api.post('/examinations/results/submit', data),
   publishResult: (id) => api.put(`/examinations/results/${id}/publish`),
+  approveResult: (id) => api.put(`/examinations/results/${id}/approve`),
+  rejectResult: (id, rejectionReason) => api.put(`/examinations/results/${id}/reject`, { rejectionReason }),
+  getPendingResults: (examinationId) => api.get('/examinations/results/pending', { params: { examinationId } }),
   getMyResults: () => api.get('/examinations/results/my'),
   getStudentResults: (studentId) => api.get(`/examinations/results/student/${studentId}`),
   getExaminationResults: (examinationId) => api.get(`/examinations/results/examination/${examinationId}`),

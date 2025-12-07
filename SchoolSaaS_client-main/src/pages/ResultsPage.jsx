@@ -24,7 +24,7 @@ export function ResultsPage() {
   const { showNotification, NotificationComponent } = useNotification();
 
   const isStudent = user?.role === 'student' || user?.role === 'parent';
-  const isTeacher = user?.role === 'teacher' || user?.role === 'school_admin';
+  const isTeacher = user?.role === 'teacher' || user?.role === 'school_admin' || user?.role === 'exam_controller';
 
   useEffect(() => {
     if (location.state?.exam && location.state?.student) {
