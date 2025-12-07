@@ -64,7 +64,8 @@ export const teacherService = {
   createTeacher: (data) => api.post('/teachers', data),
   bulkCreateTeachers: (data) => api.post('/teachers/bulk', data),
   updateTeacher: (id, data) => api.put(`/teachers/${id}`, data),
-  deleteTeacher: (id) => api.delete(`/teachers/${id}`)
+  deleteTeacher: (id) => api.delete(`/teachers/${id}`),
+  getTeachersForInvigilation: () => api.get('/teachers', { params: { limit: 1000 } })
 };
 
 export const attendanceService = {
@@ -83,12 +84,14 @@ export const examinationService = {
   generateAdmitCard: (examinationId) => api.get(`/examinations/admit-card/${examinationId}`),
   createExamination: (data) => api.post('/examinations', data),
   updateExamination: (id, data) => api.put(`/examinations/${id}`, data),
+  deleteExamination: (id) => api.delete(`/examinations/${id}`),
   updateExaminationStatus: (id, status) => api.put(`/examinations/${id}/status`, { status }),
   submitResult: (data) => api.post('/examinations/results/submit', data),
   publishResult: (id) => api.put(`/examinations/results/${id}/publish`),
   approveResult: (id) => api.put(`/examinations/results/${id}/approve`),
   rejectResult: (id, rejectionReason) => api.put(`/examinations/results/${id}/reject`, { rejectionReason }),
   getPendingResults: (examinationId) => api.get('/examinations/results/pending', { params: { examinationId } }),
+  checkInvigilatorConflict: (data) => api.post('/examinations/check-conflict', data),
   getMyResults: () => api.get('/examinations/results/my'),
   getStudentResults: (studentId) => api.get(`/examinations/results/student/${studentId}`),
   getExaminationResults: (examinationId) => api.get(`/examinations/results/examination/${examinationId}`),

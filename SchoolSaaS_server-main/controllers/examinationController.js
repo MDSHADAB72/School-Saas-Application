@@ -26,23 +26,19 @@ export const getAllExaminations = async (req, res) => {
       const student = await Student.findOne({ userId: userId || _id });
       if (student) {
         filter.class = student.class;
-        filter.sections = student.section;
+        filter.section = student.section;
       }
       filter.status = 'public';
-    } else if (role === 'school_admin' || role === 'exam_controller') {
+    } else if (role === 'school_admin' || role === 'exam_controller' || role === 'teacher') {
       if (className) filter.class = className;
       if (status) filter.status = status;
-    } else {
-      if (className) filter.class = className;
-      filter.status = 'public';
     }
 
     const examinations = await Examination.find(filter)
       .populate('createdBy', 'firstName lastName')
-      .populate('invigilator')
       .skip(skip)
       .limit(parseInt(limit))
-      .sort({ date: -1 });
+      .sort({ examStartDate: -1 });
 
     const total = await Examination.countDocuments(filter);
 
@@ -85,42 +81,31 @@ export const getUpcomingExams = async (req, res) => {
 export const createExamination = async (req, res) => {
   try {
     const { schoolId, userId, _id } = req.user;
-    const { title, code, description, type, class: className, sections, date, startAt, durationMinutes, subjects, venue, invigilator, status } = req.body;
+    const { examName, description, type, class: className, section, examStartDate, examEndDate, subjects, status } = req.body;
 
-    // Validate subjects
     if (!subjects || !Array.isArray(subjects) || subjects.length === 0) {
       return res.status(400).json({ message: 'At least one subject is required' });
     }
 
-    // Parse subjects if they come as strings
-    const parsedSubjects = subjects.map(sub => ({
-      name: sub.name,
-      maxMarks: Number(sub.maxMarks),
-      passingMarks: Number(sub.passingMarks)
+    const cleanedSubjects = subjects.map(sub => ({
+      ...sub,
+      invigilators: sub.invigilators.filter(inv => inv.teacherId || inv.teacherName).map(inv => ({
+        ...(inv.teacherId ? { teacherId: inv.teacherId } : {}),
+        ...(inv.teacherName ? { teacherName: inv.teacherName } : {}),
+        role: inv.role
+      }))
     }));
-
-    const totalMarks = parsedSubjects.reduce((sum, sub) => sum + sub.maxMarks, 0);
-    const passingMarks = parsedSubjects.reduce((sum, sub) => sum + sub.passingMarks, 0);
-
-    // Parse sections if it's a string
-    const parsedSections = Array.isArray(sections) ? sections : [];
 
     const examination = new Examination({
       schoolId,
-      title,
-      code,
+      examName,
       description,
       type,
       class: className,
-      sections: parsedSections,
-      date: new Date(date),
-      startAt: startAt ? new Date(`${date}T${startAt}`) : new Date(date),
-      durationMinutes: Number(durationMinutes),
-      subjects: parsedSubjects,
-      totalMarks,
-      passingMarks,
-      venue,
-      invigilator: invigilator || null,
+      section,
+      examStartDate: new Date(examStartDate),
+      examEndDate: new Date(examEndDate),
+      subjects: cleanedSubjects,
       status: status || 'draft',
       createdBy: userId || _id
     });
@@ -136,28 +121,20 @@ export const createExamination = async (req, res) => {
 export const updateExamination = async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, code, description, type, class: className, sections, date, startAt, durationMinutes, subjects, venue, invigilator } = req.body;
-
-    const totalMarks = subjects.reduce((sum, sub) => sum + sub.maxMarks, 0);
-    const passingMarks = subjects.reduce((sum, sub) => sum + sub.passingMarks, 0);
+    const { examName, description, type, class: className, section, examStartDate, examEndDate, subjects, status } = req.body;
 
     const examination = await Examination.findByIdAndUpdate(
       id,
       {
-        title,
-        code,
+        examName,
         description,
         type,
         class: className,
-        sections,
-        date: new Date(date),
-        startAt: startAt ? new Date(startAt) : new Date(date),
-        durationMinutes,
+        section,
+        examStartDate: new Date(examStartDate),
+        examEndDate: new Date(examEndDate),
         subjects,
-        totalMarks,
-        passingMarks,
-        venue,
-        invigilator
+        status
       },
       { new: true }
     );
@@ -169,6 +146,23 @@ export const updateExamination = async (req, res) => {
     res.json({ message: 'Examination updated successfully', examination });
   } catch (error) {
     res.status(500).json({ message: 'Error updating examination', error: error.message });
+  }
+};
+
+export const deleteExamination = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const examination = await Examination.findByIdAndDelete(id);
+    if (!examination) {
+      return res.status(404).json({ message: 'Examination not found' });
+    }
+
+    await Result.deleteMany({ examinationId: id });
+
+    res.json({ message: 'Examination and related results deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ message: 'Error deleting examination', error: error.message });
   }
 };
 
@@ -236,6 +230,7 @@ export const getStudentResults = async (req, res) => {
     const filter = { studentId };
     if (role === 'student' || role === 'parent') {
       filter.isDraft = false;
+      filter.approvalStatus = 'approved';
     }
 
     const results = await Result.find(filter)
@@ -438,6 +433,56 @@ export const getPendingResults = async (req, res) => {
     res.json({ results, count: results.length });
   } catch (error) {
     res.status(500).json({ message: 'Error fetching pending results', error: error.message });
+  }
+};
+
+export const checkInvigilatorConflict = async (req, res) => {
+  try {
+    const { schoolId } = req.user;
+    const { teacherId, examDate, startTime, duration } = req.body;
+
+    if (!teacherId || !examDate || !startTime) {
+      return res.json({ hasConflict: false });
+    }
+
+    const [hours, minutes] = startTime.split(':');
+    const examStart = new Date(examDate);
+    examStart.setHours(parseInt(hours), parseInt(minutes), 0);
+    const examEnd = new Date(examStart.getTime() + (duration || 180) * 60000);
+
+    const allExams = await Examination.find({ schoolId });
+    const conflicts = [];
+
+    allExams.forEach(exam => {
+      exam.subjects.forEach(subject => {
+        const hasTeacher = subject.invigilators.some(inv => 
+          inv.teacherId && inv.teacherId.toString() === teacherId
+        );
+        
+        if (hasTeacher) {
+          const subjectDate = new Date(subject.examDate);
+          const [subHours, subMinutes] = subject.startTime.split(':');
+          const subjectStart = new Date(subjectDate);
+          subjectStart.setHours(parseInt(subHours), parseInt(subMinutes), 0);
+          const subjectEnd = new Date(subjectStart.getTime() + subject.duration * 60000);
+
+          if (examStart < subjectEnd && examEnd > subjectStart && 
+              examDate === subject.examDate.toISOString().split('T')[0]) {
+            conflicts.push({
+              examName: exam.examName,
+              subjectName: subject.subjectName,
+              date: subject.examDate,
+              startTime: subject.startTime,
+              roomNumber: subject.roomNumber
+            });
+          }
+        }
+      });
+    });
+
+    res.json({ hasConflict: conflicts.length > 0, conflicts });
+  } catch (error) {
+    res.status(500).json({ message: 'Error checking conflicts', error: error.message });
   }
 };
 

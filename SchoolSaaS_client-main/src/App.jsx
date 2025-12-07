@@ -24,7 +24,7 @@ import { TemplatePreviewPage } from './pages/TemplatePreviewPage';
 
 import { ExamControllerDashboard } from './pages/dashboards/ExamControllerDashboard';
 import { ExamControllerPage } from './pages/ExamControllerPage';
-import { ExamControllerExaminationsPage } from './pages/ExamControllerExaminationsPage';
+import { ExamControllerExaminationsPageNew } from './pages/ExamControllerExaminationsPageNew';
 import { PeriodConfigurationPage } from './pages/timetable/PeriodConfigurationPage';
 
 import { ProtectedRoute } from './components/common/ProtectedRoute';
@@ -64,7 +64,7 @@ function AppRoutes() {
 
       {/* Exam Controller Routes */}
       <Route path="/examcontroller/dashboard" element={<ProtectedRoute><ExamControllerDashboard /></ProtectedRoute>} />
-      <Route path="/examcontroller/examinations" element={<ProtectedRoute><ExamControllerExaminationsPage /></ProtectedRoute>} />
+      <Route path="/examcontroller/examinations" element={<ProtectedRoute><ExamControllerExaminationsPageNew /></ProtectedRoute>} />
       <Route path="/examcontroller/timetable" element={<ProtectedRoute><PeriodConfigurationPage /></ProtectedRoute>} />
 
       {/* Profile Route - Available to all roles */}

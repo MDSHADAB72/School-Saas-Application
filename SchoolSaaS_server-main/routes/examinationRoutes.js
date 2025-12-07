@@ -4,6 +4,7 @@ import {
   getAllExaminations,
   createExamination,
   updateExamination,
+  deleteExamination,
   submitResult,
   getStudentResults,
   getMyResults,
@@ -13,6 +14,7 @@ import {
   approveResult,
   rejectResult,
   getPendingResults,
+  checkInvigilatorConflict,
   getUpcomingExams,
   getMyExamSchedule,
   generateAdmitCard,
@@ -29,12 +31,14 @@ router.get('/admit-card/eligibility', authenticate, authorize(['student', 'paren
 router.get('/admit-card/:examinationId', authenticate, authorize(['student', 'parent']), generateAdmitCard);
 router.post('/', authenticate, authorize(['exam_controller']), createExamination);
 router.put('/:id', authenticate, authorize(['exam_controller']), updateExamination);
+router.delete('/:id', authenticate, authorize(['exam_controller']), deleteExamination);
 router.put('/:id/status', authenticate, authorize(['exam_controller']), updateExaminationStatus);
 router.post('/results/submit', authenticate, authorize(['teacher', 'school_admin', 'exam_controller']), submitResult);
 router.put('/results/:id/publish', authenticate, authorize(['teacher', 'school_admin', 'exam_controller']), publishResult);
 router.put('/results/:id/approve', authenticate, authorize(['exam_controller', 'school_admin']), approveResult);
 router.put('/results/:id/reject', authenticate, authorize(['exam_controller', 'school_admin']), rejectResult);
 router.get('/results/pending', authenticate, authorize(['exam_controller', 'school_admin']), getPendingResults);
+router.post('/check-conflict', authenticate, authorize(['exam_controller', 'school_admin']), checkInvigilatorConflict);
 router.get('/results/my', authenticate, authorize(['student', 'parent']), getMyResults);
 router.get('/results/student/:studentId', authenticate, getStudentResults);
 router.get('/results/examination/:examinationId', authenticate, getExaminationResults);

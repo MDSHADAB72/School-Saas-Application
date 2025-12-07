@@ -135,8 +135,10 @@ export function ExaminationsPage() {
   const isTeacher = user?.role === 'teacher' || user?.role === 'school_admin';
 
   useEffect(() => {
-    fetchExaminations();
-  }, []);
+    if (user) {
+      fetchExaminations();
+    }
+  }, [user]);
 
   const fetchExaminations = async () => {
     try {
@@ -221,17 +223,63 @@ export function ExaminationsPage() {
     }
   };
 
+  const handleApproveResult = async (resultId) => {
+    try {
+      await examinationService.approveResult(resultId);
+      showNotification('Result approved and published successfully', 'success');
+      handleViewResults(selectedExam);
+    } catch (error) {
+      showNotification('Error approving result', 'error');
+    }
+  };
+
+  const handleRejectResult = async (resultId) => {
+    const reason = prompt('Enter rejection reason:');
+    if (!reason) return;
+    
+    try {
+      await examinationService.rejectResult(resultId, reason);
+      showNotification('Result rejected', 'success');
+      handleViewResults(selectedExam);
+    } catch (error) {
+      showNotification('Error rejecting result', 'error');
+    }
+  };
+
   const handleViewResults = async (exam) => {
     try {
+      console.log('Selected exam:', exam);
+      console.log('Exam subjects:', exam.subjects);
+      
+      if (!exam.subjects || exam.subjects.length === 0) {
+        showNotification('This examination has no subjects configured', 'error');
+        return;
+      }
+      
       setSelectedExam(exam);
+      
+      // Fetch students - trim whitespace from class and section
+      const classFilter = exam.class?.trim();
+      const sectionFilter = exam.section?.trim();
+      
+      console.log('Fetching students for class:', classFilter, 'section:', sectionFilter);
+      
       const [studentsRes, resultsRes] = await Promise.all([
-        studentService.getAllStudents({ class: exam.class, limit: 1000 }),
+        studentService.getAllStudents({ class: classFilter, section: sectionFilter, limit: 1000 }),
         examinationService.getExaminationResults(exam._id)
       ]);
-      setStudents(studentsRes.data.students);
-      setResults(resultsRes.data.results);
+      
+      console.log('Students found:', studentsRes.data.students?.length);
+      
+      if (!studentsRes.data.students || studentsRes.data.students.length === 0) {
+        showNotification(`No students found in class ${classFilter}-${sectionFilter}`, 'warning');
+      }
+      
+      setStudents(studentsRes.data.students || []);
+      setResults(resultsRes.data.results || []);
       setOpenResultDialog(true);
     } catch (error) {
+      console.error('Error fetching results:', error);
       showNotification('Error fetching results', 'error');
     }
   };
@@ -283,41 +331,56 @@ export function ExaminationsPage() {
                   <TableCell><strong>Code</strong></TableCell>
                   <TableCell><strong>Class</strong></TableCell>
                   <TableCell><strong>Type</strong></TableCell>
-                  <TableCell><strong>Date</strong></TableCell>
+                  <TableCell><strong>Date & Time</strong></TableCell>
+                  <TableCell><strong>Room</strong></TableCell>
                   <TableCell><strong>Subjects</strong></TableCell>
                   <TableCell><strong>Status</strong></TableCell>
+                  {user?.role === 'exam_controller' && <TableCell><strong>Manage Status</strong></TableCell>}
                   <TableCell><strong>Actions</strong></TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {examinations.map((exam) => (
-                  <TableRow key={exam._id} hover>
-                    <TableCell>{exam.title}</TableCell>
-                    <TableCell>{exam.code}</TableCell>
-                    <TableCell>{exam.class}</TableCell>
-                    <TableCell>{exam.type}</TableCell>
-                    <TableCell>{new Date(exam.date).toLocaleDateString()}</TableCell>
-                    <TableCell>{exam.subjects?.length || 0}</TableCell>
-                    <TableCell>
-                      <Chip 
-                        label={exam.status} 
-                        size="small"
-                        color={exam.status === 'public' ? 'success' : exam.status === 'private' ? 'warning' : 'default'}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                        {isTeacher && (
-                          <Button
-                            size="small"
-                            variant="outlined"
-                            startIcon={<VisibilityIcon />}
-                            onClick={() => handleViewResults(exam)}
-                          >
-                            Results
-                          </Button>
-                        )}
-                        {isAdmin && (
+                {examinations.map((exam) => {
+                  const title = exam.examName || exam.title || 'Untitled';
+                  const code = exam.code || '-';
+                  
+                  let dateDisplay = 'Not Set';
+                  if (exam.examStartDate && exam.examEndDate) {
+                    try {
+                      dateDisplay = `${new Date(exam.examStartDate).toLocaleDateString()} - ${new Date(exam.examEndDate).toLocaleDateString()}`;
+                    } catch (e) {
+                      dateDisplay = 'Invalid Date';
+                    }
+                  } else if (exam.date) {
+                    try {
+                      dateDisplay = new Date(exam.date).toLocaleDateString();
+                    } catch (e) {
+                      dateDisplay = 'Invalid Date';
+                    }
+                  }
+                  
+                  const room = exam.subjects?.[0]?.roomNumber || exam.roomNumber || 'Not Set';
+                  
+                  return (
+                    <TableRow key={exam._id} hover>
+                      <TableCell>{title}</TableCell>
+                      <TableCell>{code}</TableCell>
+                      <TableCell>{exam.class}-{exam.section}</TableCell>
+                      <TableCell>{exam.type}</TableCell>
+                      <TableCell>
+                        <Typography variant="body2">{dateDisplay}</Typography>
+                      </TableCell>
+                      <TableCell>{room}</TableCell>
+                      <TableCell>{exam.subjects?.length || 0}</TableCell>
+                      <TableCell>
+                        <Chip 
+                          label={exam.status || 'draft'} 
+                          size="small"
+                          color={exam.status === 'public' ? 'success' : exam.status === 'private' ? 'warning' : 'default'}
+                        />
+                      </TableCell>
+                      {user?.role === 'exam_controller' && (
+                        <TableCell>
                           <ButtonGroup size="small">
                             <Button 
                               onClick={() => handleStatusChange(exam._id, 'draft')}
@@ -340,11 +403,22 @@ export function ExaminationsPage() {
                               Private
                             </Button>
                           </ButtonGroup>
+                        </TableCell>
+                      )}
+                      <TableCell>
+                        {isTeacher && (
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            onClick={() => handleViewResults(exam)}
+                          >
+                            Results
+                          </Button>
                         )}
-                      </Box>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </TableContainer>
@@ -484,7 +558,7 @@ export function ExaminationsPage() {
           {/* Results Dialog */}
           <Dialog open={openResultDialog} onClose={() => setOpenResultDialog(false)} maxWidth="lg" fullWidth>
             <DialogTitle>
-              Results for: {selectedExam?.title}
+              Results for: {selectedExam?.examName || selectedExam?.title}
             </DialogTitle>
             <DialogContent>
               <TableContainer>
@@ -497,6 +571,7 @@ export function ExaminationsPage() {
                       <TableCell><strong>Marks</strong></TableCell>
                       <TableCell><strong>Grade</strong></TableCell>
                       <TableCell><strong>Status</strong></TableCell>
+                      {user?.role === 'exam_controller' && <TableCell><strong>Approval</strong></TableCell>}
                       <TableCell><strong>Actions</strong></TableCell>
                     </TableRow>
                   </TableHead>
@@ -521,23 +596,59 @@ export function ExaminationsPage() {
                               />
                             ) : '-'}
                           </TableCell>
+                          {user?.role === 'exam_controller' && (
+                            <TableCell>
+                              {result && !result.isDraft ? (
+                                <Chip 
+                                  label={result.approvalStatus || 'pending'} 
+                                  size="small"
+                                  color={
+                                    result.approvalStatus === 'approved' ? 'success' : 
+                                    result.approvalStatus === 'rejected' ? 'error' : 'warning'
+                                  }
+                                />
+                              ) : '-'}
+                            </TableCell>
+                          )}
                           <TableCell>
-                            {user?.role !== 'school_admin' && (
-                              <Button
-                                size="small"
-                                variant="contained"
-                                onClick={() => handleSubmitMarks(student)}
-                              >
-                                {result ? 'Edit' : 'Submit'} Marks
-                              </Button>
-                            )}
-                            {user?.role === 'school_admin' && result && (
-                              <Chip 
-                                label="View Only" 
-                                size="small"
-                                color="default"
-                              />
-                            )}
+                            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                              {user?.role !== 'school_admin' && (
+                                <Button
+                                  size="small"
+                                  variant="contained"
+                                  onClick={() => handleSubmitMarks(student)}
+                                >
+                                  {result ? 'Edit' : 'Submit'} Marks
+                                </Button>
+                              )}
+                              {user?.role === 'exam_controller' && result && !result.isDraft && result.approvalStatus === 'pending' && (
+                                <>
+                                  <Button
+                                    size="small"
+                                    variant="contained"
+                                    color="success"
+                                    onClick={() => handleApproveResult(result._id)}
+                                  >
+                                    Approve
+                                  </Button>
+                                  <Button
+                                    size="small"
+                                    variant="outlined"
+                                    color="error"
+                                    onClick={() => handleRejectResult(result._id)}
+                                  >
+                                    Reject
+                                  </Button>
+                                </>
+                              )}
+                              {user?.role === 'school_admin' && result && (
+                                <Chip 
+                                  label="View Only" 
+                                  size="small"
+                                  color="default"
+                                />
+                              )}
+                            </Box>
                           </TableCell>
                         </TableRow>
                       );

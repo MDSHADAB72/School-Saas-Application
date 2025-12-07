@@ -6,31 +6,28 @@ const examinationSchema = new mongoose.Schema({
     ref: 'School',
     required: true
   },
-  // Support both old and new field names
-  title: { type: String },
-  examName: { type: String },
-  code: { type: String },
-  examType: { type: String },
+  examName: { type: String, required: true },
   description: String,
   type: { type: String, enum: ['unit', 'midterm', 'final', 'class_test'], default: 'unit' },
   class: { type: String, required: true },
-  section: { type: String },
-  sections: [{ type: String }],
-  subject: { type: String },
-  date: { type: Date },
-  examDate: { type: Date },
-  startAt: { type: Date },
-  duration: { type: Number },
-  durationMinutes: { type: Number },
+  section: { type: String, required: true },
+  examStartDate: { type: Date, required: true },
+  examEndDate: { type: Date, required: true },
   subjects: [{
-    name: { type: String },
-    maxMarks: { type: Number },
-    passingMarks: { type: Number }
+    subjectName: { type: String, required: true },
+    examDate: { type: Date, required: true },
+    startTime: { type: String, required: true },
+    duration: { type: Number, required: true },
+    roomNumber: { type: String },
+    maxMarks: { type: Number, required: true },
+    totalMarks: { type: Number, required: true },
+    passingMarks: { type: Number },
+    invigilators: [{
+      teacherId: { type: mongoose.Schema.Types.ObjectId, ref: 'Teacher', required: false },
+      teacherName: { type: String, required: false },
+      role: { type: String, enum: ['Chief Invigilator', 'Invigilator', 'Relief'], default: 'Invigilator' }
+    }]
   }],
-  totalMarks: { type: Number },
-  passingMarks: { type: Number },
-  venue: String,
-  invigilator: { type: mongoose.Schema.Types.ObjectId, ref: 'Teacher' },
   status: { type: String, enum: ['draft', 'public', 'private'], default: 'draft' },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
 }, { timestamps: true });

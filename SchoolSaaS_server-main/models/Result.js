@@ -16,6 +16,13 @@ const resultSchema = new mongoose.Schema({
     ref: 'Student',
     required: true
   },
+  subjectId: { type: String },
+  subjectName: { type: String },
+  marksObtained: { type: Number },
+  maxMarks: { type: Number },
+  passingMarks: { type: Number },
+  status: { type: String, enum: ['Pass', 'Fail', 'Absent'] },
+  grade: String,
   subjectResults: [{
     subjectName: { type: String, required: true },
     marksObtained: { type: Number, required: true },

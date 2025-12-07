@@ -51,8 +51,8 @@ export function ResultsPage() {
     setSelectedExam(exam);
     setSelectedStudent(student);
     setSubjectMarks(exam.subjects.map(sub => ({
-      subjectName: sub.name,
-      maxMarks: sub.maxMarks,
+      subjectName: sub.subjectName || sub.name,
+      maxMarks: sub.totalMarks || sub.maxMarks,
       passingMarks: sub.passingMarks,
       marksObtained: 0
     })));
@@ -272,7 +272,7 @@ export function ResultsPage() {
             <DialogContent>
               <Box sx={{ pt: 2 }}>
                 <Typography variant="body2" sx={{ mb: 2 }}>
-                  <strong>Examination:</strong> {selectedExam?.title} ({selectedExam?.code})
+                  <strong>Examination:</strong> {selectedExam?.examName || selectedExam?.title} {selectedExam?.code && `(${selectedExam.code})`}
                 </Typography>
                 <Typography variant="body2" sx={{ mb: 3 }}>
                   <strong>Roll Number:</strong> {selectedStudent?.rollNumber} | <strong>Class:</strong> {selectedStudent?.class}-{selectedStudent?.section}
