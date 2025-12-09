@@ -19,7 +19,9 @@ export function ExamControllerExaminationsPageNew() {
   const [loading, setLoading] = useState(true);
   const [openDialog, setOpenDialog] = useState(false);
   const [openResultDialog, setOpenResultDialog] = useState(false);
+  const [openDetailDialog, setOpenDetailDialog] = useState(false);
   const [selectedExam, setSelectedExam] = useState(null);
+  const [editMode, setEditMode] = useState(false);
   const [students, setStudents] = useState([]);
   const [results, setResults] = useState([]);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -27,6 +29,7 @@ export function ExamControllerExaminationsPageNew() {
   const [teachers, setTeachers] = useState([]);
   const [formData, setFormData] = useState({
     examName: '',
+    examCode: '',
     description: '',
     type: 'unit',
     class: '',
@@ -35,6 +38,7 @@ export function ExamControllerExaminationsPageNew() {
     examEndDate: '',
     subjects: [{
       subjectName: '',
+      subjectCode: '',
       examDate: '',
       startTime: '',
       duration: 180,
@@ -79,6 +83,7 @@ export function ExamControllerExaminationsPageNew() {
       ...prev,
       subjects: [...prev.subjects, {
         subjectName: '',
+        subjectCode: '',
         examDate: '',
         startTime: '',
         duration: 180,
@@ -99,6 +104,35 @@ export function ExamControllerExaminationsPageNew() {
   };
 
   const handleSubjectChange = (index, field, value) => {
+    // Validate subject date is within exam period
+    if (field === 'examDate' && value && formData.examStartDate && formData.examEndDate) {
+      if (value < formData.examStartDate || value > formData.examEndDate) {
+        showNotification('Subject exam date must be between exam start and end dates', 'error');
+        return;
+      }
+    }
+
+    // Check for duplicate date/time combination
+    if ((field === 'examDate' || field === 'startTime') && value) {
+      const updatedSubjects = formData.subjects.map((sub, i) => 
+        i === index ? { ...sub, [field]: value } : sub
+      );
+      const currentSubject = updatedSubjects[index];
+      
+      if (currentSubject.examDate && currentSubject.startTime) {
+        const duplicate = updatedSubjects.some((sub, i) => 
+          i !== index && 
+          sub.examDate === currentSubject.examDate && 
+          sub.startTime === currentSubject.startTime
+        );
+        
+        if (duplicate) {
+          showNotification('Another subject already has the same date and time', 'error');
+          return;
+        }
+      }
+    }
+
     setFormData(prev => ({
       ...prev,
       subjects: prev.subjects.map((sub, i) => 
@@ -265,6 +299,50 @@ export function ExamControllerExaminationsPageNew() {
     }
   };
 
+  const handleExamClick = (exam) => {
+    setSelectedExam(exam);
+    setOpenDetailDialog(true);
+  };
+
+  const handleEdit = () => {
+    setEditMode(true);
+    setFormData({
+      examName: selectedExam.examName,
+      examCode: selectedExam.examCode || selectedExam.code || '',
+      description: selectedExam.description || '',
+      type: selectedExam.type,
+      class: selectedExam.class,
+      section: selectedExam.section,
+      examStartDate: selectedExam.examStartDate?.split('T')[0] || '',
+      examEndDate: selectedExam.examEndDate?.split('T')[0] || '',
+      subjects: selectedExam.subjects?.map(sub => ({
+        subjectName: sub.subjectName || '',
+        subjectCode: sub.subjectCode || '',
+        examDate: sub.examDate?.split('T')[0] || '',
+        startTime: sub.startTime || '',
+        duration: sub.duration || 180,
+        roomNumber: sub.roomNumber || '',
+        maxMarks: sub.maxMarks || 100,
+        totalMarks: sub.totalMarks || 100,
+        passingMarks: sub.passingMarks || 33,
+        invigilators: sub.invigilators || []
+      })) || [{
+        subjectName: '',
+        subjectCode: '',
+        examDate: '',
+        startTime: '',
+        duration: 180,
+        roomNumber: '',
+        maxMarks: 100,
+        totalMarks: 100,
+        passingMarks: 33,
+        invigilators: []
+      }]
+    });
+    setOpenDetailDialog(false);
+    setOpenDialog(true);
+  };
+
   const handleSave = async () => {
     try {
       if (!formData.examName || !formData.class || !formData.section || !formData.examStartDate || !formData.examEndDate) {
@@ -281,24 +359,50 @@ export function ExamControllerExaminationsPageNew() {
         return;
       }
 
-      await examinationService.createExamination({
+      // Validate all subject dates are within exam period
+      const invalidDates = validSubjects.filter(s => 
+        s.examDate < formData.examStartDate || s.examDate > formData.examEndDate
+      );
+      if (invalidDates.length > 0) {
+        showNotification('All subject exam dates must be between exam start and end dates', 'error');
+        return;
+      }
+
+      // Check for duplicate date/time combinations
+      const dateTimeCombos = validSubjects.map(s => `${s.examDate}-${s.startTime}`);
+      const duplicates = dateTimeCombos.filter((item, index) => dateTimeCombos.indexOf(item) !== index);
+      if (duplicates.length > 0) {
+        showNotification('Multiple subjects cannot have the same date and time', 'error');
+        return;
+      }
+
+      const dataToSave = {
         ...formData,
         subjects: validSubjects
-      });
+      };
+
+      if (editMode) {
+        await examinationService.updateExamination(selectedExam._id, dataToSave);
+        showNotification('Examination updated successfully', 'success');
+      } else {
+        await examinationService.createExamination(dataToSave);
+        showNotification('Examination created successfully', 'success');
+      }
       
-      showNotification('Examination created successfully', 'success');
       setOpenDialog(false);
+      setEditMode(false);
       fetchExaminations();
       resetForm();
     } catch (error) {
-      console.error('Error creating examination:', error);
-      showNotification(error.response?.data?.message || 'Error creating examination', 'error');
+      console.error('Error saving examination:', error);
+      showNotification(error.response?.data?.message || 'Error saving examination', 'error');
     }
   };
 
   const resetForm = () => {
     setFormData({
       examName: '',
+      examCode: '',
       description: '',
       type: 'unit',
       class: '',
@@ -307,6 +411,7 @@ export function ExamControllerExaminationsPageNew() {
       examEndDate: '',
       subjects: [{
         subjectName: '',
+        subjectCode: '',
         examDate: '',
         startTime: '',
         duration: 180,
@@ -331,7 +436,7 @@ export function ExamControllerExaminationsPageNew() {
             <Typography variant="h4" sx={{ fontWeight: 'bold' }}>
               Examinations
             </Typography>
-            <Button variant="contained" startIcon={<AddIcon />} onClick={() => setOpenDialog(true)}>
+            <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setEditMode(false); resetForm(); setOpenDialog(true); }}>
               Create Examination
             </Button>
           </Box>
@@ -352,7 +457,12 @@ export function ExamControllerExaminationsPageNew() {
               </TableHead>
               <TableBody>
                 {examinations.map((exam) => (
-                  <TableRow key={exam._id} hover>
+                  <TableRow 
+                    key={exam._id} 
+                    hover 
+                    sx={{ cursor: 'pointer' }} 
+                    onClick={() => handleExamClick(exam)}
+                  >
                     <TableCell>{exam.examName}</TableCell>
                     <TableCell>{exam.class}-{exam.section}</TableCell>
                     <TableCell>{exam.type}</TableCell>
@@ -369,7 +479,7 @@ export function ExamControllerExaminationsPageNew() {
                         color={exam.status === 'public' ? 'success' : exam.status === 'private' ? 'warning' : 'default'}
                       />
                     </TableCell>
-                    <TableCell>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
                       <ButtonGroup size="small">
                         <Button 
                           onClick={() => handleStatusChange(exam._id, 'draft')}
@@ -393,24 +503,14 @@ export function ExamControllerExaminationsPageNew() {
                         </Button>
                       </ButtonGroup>
                     </TableCell>
-                    <TableCell>
-                      <Box sx={{ display: 'flex', gap: 1 }}>
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          startIcon={<VisibilityIcon />}
-                          onClick={() => handleViewResults(exam)}
-                        >
-                          Results
-                        </Button>
-                        <IconButton 
-                          color="error" 
-                          size="small"
-                          onClick={() => handleDelete(exam._id)}
-                        >
-                          <DeleteIcon />
-                        </IconButton>
-                      </Box>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <IconButton 
+                        color="error" 
+                        size="small"
+                        onClick={() => handleDelete(exam._id)}
+                      >
+                        <DeleteIcon />
+                      </IconButton>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -418,19 +518,136 @@ export function ExamControllerExaminationsPageNew() {
             </Table>
           </TableContainer>
 
-          {/* Create Examination Dialog */}
+          {/* Exam Detail Dialog */}
+          <Dialog open={openDetailDialog} onClose={() => setOpenDetailDialog(false)} maxWidth="md" fullWidth>
+            <DialogTitle sx={{ bgcolor: 'primary.main', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Box sx={{ fontWeight: 'bold', fontSize: '1.5rem' }}>{selectedExam?.examName}</Box>
+              <Button startIcon={<AddIcon />} variant="contained" color="secondary" onClick={handleEdit}>
+                Edit
+              </Button>
+            </DialogTitle>
+            <DialogContent sx={{ pt: 3 }}>
+              {selectedExam && (
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  {/* Basic Info Card */}
+                  <Paper elevation={2} sx={{ p: 2.5, borderLeft: '4px solid', borderColor: 'primary.main' }}>
+                    <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: 'primary.main' }}>Basic Information</Typography>
+                    <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 2, mb: 2 }}>
+                      {(selectedExam.examCode || selectedExam.code) && (
+                        <Box>
+                          <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 'bold' }}>CODE</Typography>
+                          <Typography variant="body1">{selectedExam.examCode || selectedExam.code}</Typography>
+                        </Box>
+                      )}
+                      <Box>
+                        <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 'bold' }}>TYPE</Typography>
+                        <Typography variant="body1" sx={{ textTransform: 'capitalize' }}>{selectedExam.type}</Typography>
+                      </Box>
+                      <Box>
+                        <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 'bold' }}>CLASS</Typography>
+                        <Typography variant="body1">{selectedExam.class}</Typography>
+                      </Box>
+                      <Box>
+                        <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 'bold' }}>SECTION</Typography>
+                        <Typography variant="body1">{selectedExam.section}</Typography>
+                      </Box>
+                    </Box>
+                    {selectedExam.description && (
+                      <Box>
+                        <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 'bold' }}>DESCRIPTION</Typography>
+                        <Typography variant="body2">{selectedExam.description}</Typography>
+                      </Box>
+                    )}
+                  </Paper>
+
+                  {/* Exam Period Card */}
+                  <Paper elevation={2} sx={{ p: 2.5, borderLeft: '4px solid', borderColor: 'success.main' }}>
+                    <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: 'success.main' }}>Exam Period</Typography>
+                    <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3 }}>
+                      <Box>
+                        <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 'bold' }}>START DATE</Typography>
+                        <Typography variant="body1">{new Date(selectedExam.examStartDate).toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}</Typography>
+                      </Box>
+                      <Box>
+                        <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 'bold' }}>END DATE</Typography>
+                        <Typography variant="body1">{new Date(selectedExam.examEndDate).toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}</Typography>
+                      </Box>
+                    </Box>
+                  </Paper>
+
+                  {/* Subjects Card */}
+                  <Paper elevation={2} sx={{ p: 2.5, borderLeft: '4px solid', borderColor: 'warning.main' }}>
+                    <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: 'warning.main' }}>Subjects ({selectedExam.subjects?.length || 0})</Typography>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      {selectedExam.subjects?.map((subject, idx) => (
+                        <Paper key={idx} elevation={1} sx={{ p: 2, bgcolor: 'grey.50', border: '1px solid', borderColor: 'grey.200' }}>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', mb: 1.5 }}>
+                            <Box>
+                              <Typography variant="subtitle1" sx={{ fontWeight: 'bold', color: 'text.primary' }}>{subject.subjectName}</Typography>
+                              {subject.subjectCode && <Typography variant="caption" color="textSecondary">Code: {subject.subjectCode}</Typography>}
+                            </Box>
+                            <Chip label={`${subject.maxMarks} Marks`} size="small" color="primary" variant="outlined" />
+                          </Box>
+                          <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5, mb: 1 }}>
+                            <Box>
+                              <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 'bold' }}>DATE</Typography>
+                              <Typography variant="body2">{new Date(subject.examDate).toLocaleDateString()}</Typography>
+                            </Box>
+                            <Box>
+                              <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 'bold' }}>TIME</Typography>
+                              <Typography variant="body2">{subject.startTime} ({subject.duration} min)</Typography>
+                            </Box>
+                            <Box>
+                              <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 'bold' }}>ROOM</Typography>
+                              <Typography variant="body2">{subject.roomNumber || 'Not assigned'}</Typography>
+                            </Box>
+                            <Box>
+                              <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 'bold' }}>PASSING MARKS</Typography>
+                              <Typography variant="body2">{subject.passingMarks}</Typography>
+                            </Box>
+                          </Box>
+                          {subject.invigilators?.length > 0 && (
+                            <Box sx={{ mt: 1.5, pt: 1.5, borderTop: '1px solid', borderColor: 'grey.300' }}>
+                              <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 'bold' }}>INVIGILATORS</Typography>
+                              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
+                                {subject.invigilators.map((inv, invIdx) => (
+                                  <Chip key={invIdx} label={inv.teacherName || 'N/A'} size="small" variant="outlined" />
+                                ))}
+                              </Box>
+                            </Box>
+                          )}
+                        </Paper>
+                      ))}
+                    </Box>
+                  </Paper>
+                </Box>
+              )}
+            </DialogContent>
+            <DialogActions sx={{ p: 2.5, bgcolor: 'grey.50' }}>
+              <Button onClick={() => setOpenDetailDialog(false)} variant="outlined">Close</Button>
+            </DialogActions>
+          </Dialog>
+
+          {/* Create/Edit Examination Dialog */}
           <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="md" fullWidth>
-            <DialogTitle>Create New Examination</DialogTitle>
+            <DialogTitle>{editMode ? 'Edit Examination' : 'Create New Examination'}</DialogTitle>
             <DialogContent>
               <Box sx={{ display: 'grid', gap: 2, pt: 2 }}>
-                <TextField
-                  label="Examination Name"
-                  value={formData.examName}
-                  onChange={(e) => setFormData(prev => ({ ...prev, examName: e.target.value }))}
-                  fullWidth
-                  required
-                  placeholder="e.g., Final Exam 2024"
-                />
+                <Box sx={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 2 }}>
+                  <TextField
+                    label="Examination Name"
+                    value={formData.examName}
+                    onChange={(e) => setFormData(prev => ({ ...prev, examName: e.target.value }))}
+                    required
+                    placeholder="e.g., Final Exam 2024"
+                  />
+                  <TextField
+                    label="Exam Code"
+                    value={formData.examCode}
+                    onChange={(e) => setFormData(prev => ({ ...prev, examCode: e.target.value }))}
+                    placeholder="e.g., FE2024"
+                  />
+                </Box>
                 <TextField
                   label="Description"
                   value={formData.description}
@@ -490,12 +707,20 @@ export function ExamControllerExaminationsPageNew() {
                     </AccordionSummary>
                     <AccordionDetails>
                       <Box sx={{ display: 'grid', gap: 2 }}>
-                        <TextField
-                          label="Subject Name"
-                          value={subject.subjectName}
-                          onChange={(e) => handleSubjectChange(subIdx, 'subjectName', e.target.value)}
-                          required
-                        />
+                        <Box sx={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 2 }}>
+                          <TextField
+                            label="Subject Name"
+                            value={subject.subjectName}
+                            onChange={(e) => handleSubjectChange(subIdx, 'subjectName', e.target.value)}
+                            required
+                          />
+                          <TextField
+                            label="Subject Code"
+                            value={subject.subjectCode}
+                            onChange={(e) => handleSubjectChange(subIdx, 'subjectCode', e.target.value)}
+                            placeholder="e.g., MATH101"
+                          />
+                        </Box>
                         <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 2 }}>
                           <TextField
                             label="Exam Date"
@@ -605,8 +830,8 @@ export function ExamControllerExaminationsPageNew() {
               </Box>
             </DialogContent>
             <DialogActions>
-              <Button onClick={() => setOpenDialog(false)}>Cancel</Button>
-              <Button onClick={handleSave} variant="contained">Create</Button>
+              <Button onClick={() => { setOpenDialog(false); setEditMode(false); }}>Cancel</Button>
+              <Button onClick={handleSave} variant="contained">{editMode ? 'Update' : 'Create'}</Button>
             </DialogActions>
           </Dialog>
 

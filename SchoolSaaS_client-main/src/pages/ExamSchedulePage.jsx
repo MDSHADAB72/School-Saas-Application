@@ -110,7 +110,7 @@ export function ExamSchedulePage() {
                             {exam.title}
                           </Typography>
                         </TableCell>
-                        <TableCell>{exam.code}</TableCell>
+                        <TableCell>{exam.examCode || '-'}</TableCell>
                         <TableCell>
                           <Chip label={exam.type} size="small" />
                         </TableCell>

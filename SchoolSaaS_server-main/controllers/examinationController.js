@@ -81,7 +81,7 @@ export const getUpcomingExams = async (req, res) => {
 export const createExamination = async (req, res) => {
   try {
     const { schoolId, userId, _id } = req.user;
-    const { examName, description, type, class: className, section, examStartDate, examEndDate, subjects, status } = req.body;
+    const { examName, examCode, description, type, class: className, section, examStartDate, examEndDate, subjects, status } = req.body;
 
     if (!subjects || !Array.isArray(subjects) || subjects.length === 0) {
       return res.status(400).json({ message: 'At least one subject is required' });
@@ -99,6 +99,7 @@ export const createExamination = async (req, res) => {
     const examination = new Examination({
       schoolId,
       examName,
+      examCode,
       description,
       type,
       class: className,
@@ -121,12 +122,13 @@ export const createExamination = async (req, res) => {
 export const updateExamination = async (req, res) => {
   try {
     const { id } = req.params;
-    const { examName, description, type, class: className, section, examStartDate, examEndDate, subjects, status } = req.body;
+    const { examName, examCode, description, type, class: className, section, examStartDate, examEndDate, subjects, status } = req.body;
 
     const examination = await Examination.findByIdAndUpdate(
       id,
       {
         examName,
+        examCode,
         description,
         type,
         class: className,
@@ -184,7 +186,7 @@ export const submitResult = async (req, res) => {
     
     // Check if all subjects passed
     const allPassed = subjectResults.every(sub => sub.marksObtained >= sub.passingMarks);
-    const overallStatus = allPassed && totalMarksObtained >= exam.passingMarks ? 'Pass' : 'Fail';
+    const overallStatus = allPassed ? 'Pass' : 'Fail';
 
     // Add status and grade to each subject
     const processedSubjectResults = subjectResults.map(sub => ({
@@ -622,6 +624,27 @@ export const checkAdmitCardEligibility = async (req, res) => {
     res.json({ eligible: true, message: 'You are eligible to download admit card' });
   } catch (error) {
     res.status(500).json({ message: 'Error checking eligibility', error: error.message });
+  }
+};
+
+export const updateMarksDeadline = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { marksEntryDeadline } = req.body;
+
+    const examination = await Examination.findByIdAndUpdate(
+      id,
+      { marksEntryDeadline: new Date(marksEntryDeadline) },
+      { new: true }
+    );
+
+    if (!examination) {
+      return res.status(404).json({ message: 'Examination not found' });
+    }
+
+    res.json({ message: 'Marks entry deadline updated successfully', examination });
+  } catch (error) {
+    res.status(500).json({ message: 'Error updating deadline', error: error.message });
   }
 };
 

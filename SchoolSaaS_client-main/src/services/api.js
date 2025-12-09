@@ -86,6 +86,7 @@ export const examinationService = {
   updateExamination: (id, data) => api.put(`/examinations/${id}`, data),
   deleteExamination: (id) => api.delete(`/examinations/${id}`),
   updateExaminationStatus: (id, status) => api.put(`/examinations/${id}/status`, { status }),
+  updateMarksDeadline: (id, marksEntryDeadline) => api.put(`/examinations/${id}/marks-deadline`, { marksEntryDeadline }),
   submitResult: (data) => api.post('/examinations/results/submit', data),
   publishResult: (id) => api.put(`/examinations/results/${id}/publish`),
   approveResult: (id) => api.put(`/examinations/results/${id}/approve`),

@@ -19,7 +19,8 @@ import {
   getMyExamSchedule,
   generateAdmitCard,
   checkAdmitCardEligibility,
-  printResultCard
+  printResultCard,
+  updateMarksDeadline
 } from '../controllers/examinationController.js';
 
 const router = express.Router();
@@ -33,6 +34,7 @@ router.post('/', authenticate, authorize(['exam_controller']), createExamination
 router.put('/:id', authenticate, authorize(['exam_controller']), updateExamination);
 router.delete('/:id', authenticate, authorize(['exam_controller']), deleteExamination);
 router.put('/:id/status', authenticate, authorize(['exam_controller']), updateExaminationStatus);
+router.put('/:id/marks-deadline', authenticate, authorize(['exam_controller']), updateMarksDeadline);
 router.post('/results/submit', authenticate, authorize(['teacher', 'school_admin', 'exam_controller']), submitResult);
 router.put('/results/:id/publish', authenticate, authorize(['teacher', 'school_admin', 'exam_controller']), publishResult);
 router.put('/results/:id/approve', authenticate, authorize(['exam_controller', 'school_admin']), approveResult);

@@ -112,6 +112,7 @@ export function ExaminationsPage() {
   const [loading, setLoading] = useState(true);
   const [openDialog, setOpenDialog] = useState(false);
   const [openResultDialog, setOpenResultDialog] = useState(false);
+  const [openDetailDialog, setOpenDetailDialog] = useState(false);
   const [selectedExam, setSelectedExam] = useState(null);
   const [students, setStudents] = useState([]);
   const [results, setResults] = useState([]);
@@ -133,6 +134,7 @@ export function ExaminationsPage() {
 
   const isAdmin = false; // School admin cannot create exams
   const isTeacher = user?.role === 'teacher' || user?.role === 'school_admin';
+  const isStudent = user?.role === 'student';
 
   useEffect(() => {
     if (user) {
@@ -143,9 +145,18 @@ export function ExaminationsPage() {
   const fetchExaminations = async () => {
     try {
       setLoading(true);
-      const response = await examinationService.getAllExaminations({ page: 1, limit: 100 });
+      const params = { page: 1, limit: 100 };
+      // Teachers, students, and school admins only see public exams
+      if (user?.role === 'teacher' || user?.role === 'student' || user?.role === 'school_admin') {
+        params.status = 'public';
+      }
+      console.log('Fetching exams with params:', params);
+      console.log('User role:', user?.role);
+      const response = await examinationService.getAllExaminations(params);
+      console.log('Exams received:', response.data.examinations);
       setExaminations(response.data.examinations);
     } catch (error) {
+      console.error('Error fetching examinations:', error);
       showNotification('Error fetching examinations', 'error');
     } finally {
       setLoading(false);
@@ -332,17 +343,16 @@ export function ExaminationsPage() {
                   <TableCell><strong>Class</strong></TableCell>
                   <TableCell><strong>Type</strong></TableCell>
                   <TableCell><strong>Date & Time</strong></TableCell>
-                  <TableCell><strong>Room</strong></TableCell>
+                  {!isStudent && <TableCell><strong>Room</strong></TableCell>}
                   <TableCell><strong>Subjects</strong></TableCell>
-                  <TableCell><strong>Status</strong></TableCell>
+                  {!isStudent && <TableCell><strong>Status</strong></TableCell>}
                   {user?.role === 'exam_controller' && <TableCell><strong>Manage Status</strong></TableCell>}
-                  <TableCell><strong>Actions</strong></TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {examinations.map((exam) => {
                   const title = exam.examName || exam.title || 'Untitled';
-                  const code = exam.code || '-';
+                  const code = exam.examCode || '-';
                   
                   let dateDisplay = 'Not Set';
                   if (exam.examStartDate && exam.examEndDate) {
@@ -362,7 +372,12 @@ export function ExaminationsPage() {
                   const room = exam.subjects?.[0]?.roomNumber || exam.roomNumber || 'Not Set';
                   
                   return (
-                    <TableRow key={exam._id} hover>
+                    <TableRow 
+                      key={exam._id} 
+                      hover 
+                      sx={{ cursor: 'pointer' }} 
+                      onClick={() => { setSelectedExam(exam); setOpenDetailDialog(true); }}
+                    >
                       <TableCell>{title}</TableCell>
                       <TableCell>{code}</TableCell>
                       <TableCell>{exam.class}-{exam.section}</TableCell>
@@ -370,17 +385,19 @@ export function ExaminationsPage() {
                       <TableCell>
                         <Typography variant="body2">{dateDisplay}</Typography>
                       </TableCell>
-                      <TableCell>{room}</TableCell>
+                      {!isStudent && <TableCell>{room}</TableCell>}
                       <TableCell>{exam.subjects?.length || 0}</TableCell>
-                      <TableCell>
-                        <Chip 
-                          label={exam.status || 'draft'} 
-                          size="small"
-                          color={exam.status === 'public' ? 'success' : exam.status === 'private' ? 'warning' : 'default'}
-                        />
-                      </TableCell>
-                      {user?.role === 'exam_controller' && (
+                      {!isStudent && (
                         <TableCell>
+                          <Chip 
+                            label={exam.status || 'draft'} 
+                            size="small"
+                            color={exam.status === 'public' ? 'success' : exam.status === 'private' ? 'warning' : 'default'}
+                          />
+                        </TableCell>
+                      )}
+                      {user?.role === 'exam_controller' && (
+                        <TableCell onClick={(e) => e.stopPropagation()}>
                           <ButtonGroup size="small">
                             <Button 
                               onClick={() => handleStatusChange(exam._id, 'draft')}
@@ -405,17 +422,6 @@ export function ExaminationsPage() {
                           </ButtonGroup>
                         </TableCell>
                       )}
-                      <TableCell>
-                        {isTeacher && (
-                          <Button
-                            size="small"
-                            variant="outlined"
-                            onClick={() => handleViewResults(exam)}
-                          >
-                            Results
-                          </Button>
-                        )}
-                      </TableCell>
                     </TableRow>
                   );
                 })}
@@ -552,6 +558,114 @@ export function ExaminationsPage() {
             <DialogActions>
               <Button onClick={() => setOpenDialog(false)}>Cancel</Button>
               <Button onClick={handleSave} variant="contained">Create</Button>
+            </DialogActions>
+          </Dialog>
+
+          {/* Exam Detail Dialog */}
+          <Dialog open={openDetailDialog} onClose={() => setOpenDetailDialog(false)} maxWidth="md" fullWidth>
+            <DialogTitle sx={{ bgcolor: 'primary.main', color: 'white' }}>
+              <Box sx={{ fontWeight: 'bold', fontSize: '1.5rem' }}>{selectedExam?.examName || selectedExam?.title}</Box>
+            </DialogTitle>
+            <DialogContent sx={{ pt: 3 }}>
+              {selectedExam && (
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  <Paper elevation={2} sx={{ p: 2.5, borderLeft: '4px solid', borderColor: 'primary.main' }}>
+                    <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: 'primary.main' }}>Basic Information</Typography>
+                    <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 2, mb: 2 }}>
+                      <Box>
+                        <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 'bold' }}>TYPE</Typography>
+                        <Typography variant="body1" sx={{ textTransform: 'capitalize' }}>{selectedExam.type}</Typography>
+                      </Box>
+                      <Box>
+                        <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 'bold' }}>CLASS</Typography>
+                        <Typography variant="body1">{selectedExam.class}</Typography>
+                      </Box>
+                      <Box>
+                        <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 'bold' }}>SECTION</Typography>
+                        <Typography variant="body1">{selectedExam.section}</Typography>
+                      </Box>
+                    </Box>
+                    {selectedExam.description && (
+                      <Box>
+                        <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 'bold' }}>DESCRIPTION</Typography>
+                        <Typography variant="body2">{selectedExam.description}</Typography>
+                      </Box>
+                    )}
+                  </Paper>
+
+                  <Paper elevation={2} sx={{ p: 2.5, borderLeft: '4px solid', borderColor: 'success.main' }}>
+                    <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: 'success.main' }}>Exam Period</Typography>
+                    <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3 }}>
+                      <Box>
+                        <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 'bold' }}>START DATE</Typography>
+                        <Typography variant="body1">{selectedExam.examStartDate ? new Date(selectedExam.examStartDate).toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' }) : 'Not set'}</Typography>
+                      </Box>
+                      <Box>
+                        <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 'bold' }}>END DATE</Typography>
+                        <Typography variant="body1">{selectedExam.examEndDate ? new Date(selectedExam.examEndDate).toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' }) : 'Not set'}</Typography>
+                      </Box>
+                    </Box>
+                  </Paper>
+
+                  <Paper elevation={2} sx={{ p: 2.5, borderLeft: '4px solid', borderColor: 'warning.main' }}>
+                    <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: 'warning.main' }}>Subjects ({selectedExam.subjects?.length || 0})</Typography>
+                    {(!selectedExam.subjects || selectedExam.subjects.length === 0) ? (
+                      <Typography variant="body2" color="textSecondary">No subjects configured</Typography>
+                    ) : (
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      {selectedExam.subjects.map((subject, idx) => (
+                        <Paper key={idx} elevation={1} sx={{ p: 2, bgcolor: 'grey.50', border: '1px solid', borderColor: 'grey.200' }}>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', mb: 1.5 }}>
+                            <Box>
+                              <Typography variant="subtitle1" sx={{ fontWeight: 'bold', color: 'text.primary' }}>{subject.subjectName || subject.name}</Typography>
+                              {subject.subjectCode && <Typography variant="caption" color="textSecondary">Code: {subject.subjectCode}</Typography>}
+                            </Box>
+                            <Chip label={`${subject.maxMarks} Marks`} size="small" color="primary" variant="outlined" />
+                          </Box>
+                          <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5, mb: 1 }}>
+                            {subject.examDate && (
+                              <Box>
+                                <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 'bold' }}>DATE</Typography>
+                                <Typography variant="body2">{new Date(subject.examDate).toLocaleDateString()}</Typography>
+                              </Box>
+                            )}
+                            {subject.startTime && (
+                              <Box>
+                                <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 'bold' }}>TIME</Typography>
+                                <Typography variant="body2">{subject.startTime} ({subject.duration} min)</Typography>
+                              </Box>
+                            )}
+                            {subject.roomNumber && (
+                              <Box>
+                                <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 'bold' }}>ROOM</Typography>
+                                <Typography variant="body2">{subject.roomNumber}</Typography>
+                              </Box>
+                            )}
+                            <Box>
+                              <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 'bold' }}>PASSING MARKS</Typography>
+                              <Typography variant="body2">{subject.passingMarks}</Typography>
+                            </Box>
+                          </Box>
+                          {subject.invigilators?.length > 0 && (
+                            <Box sx={{ mt: 1.5, pt: 1.5, borderTop: '1px solid', borderColor: 'grey.300' }}>
+                              <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 'bold' }}>INVIGILATORS</Typography>
+                              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
+                                {subject.invigilators.map((inv, invIdx) => (
+                                  <Chip key={invIdx} label={inv.teacherName || 'N/A'} size="small" variant="outlined" />
+                                ))}
+                              </Box>
+                            </Box>
+                          )}
+                        </Paper>
+                      ))}
+                    </Box>
+                    )}
+                  </Paper>
+                </Box>
+              )}
+            </DialogContent>
+            <DialogActions sx={{ p: 2.5, bgcolor: 'grey.50' }}>
+              <Button onClick={() => setOpenDetailDialog(false)} variant="outlined">Close</Button>
             </DialogActions>
           </Dialog>
 

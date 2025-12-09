@@ -21,9 +21,10 @@ import {
   Toolbar,
   IconButton,
   useMediaQuery,
-  useTheme
+  useTheme,
+  InputAdornment
 } from '@mui/material';
-import { ArrowBack, School, Person, LocationOn, Payment, Brightness4, Brightness7 } from '@mui/icons-material';
+import { ArrowBack, School, Person, LocationOn, Payment, Brightness4, Brightness7, Visibility, VisibilityOff } from '@mui/icons-material';
 import api from '../services/api';
 import { useThemeMode } from '../context/ThemeContext';
 
@@ -38,6 +39,8 @@ export function SchoolRegistrationPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const [formData, setFormData] = useState({
     schoolName: '',
@@ -227,17 +230,26 @@ export function SchoolRegistrationPage() {
               <TextField
                 fullWidth
                 label="Password"
-                type="password"
+                type={showPassword ? 'text' : 'password'}
                 value={formData.adminPassword}
                 onChange={handleInputChange('adminPassword')}
                 required
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton onClick={() => setShowPassword(!showPassword)} edge="end">
+                        {showPassword ? <VisibilityOff /> : <Visibility />}
+                      </IconButton>
+                    </InputAdornment>
+                  )
+                }}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
                 label="Confirm Password"
-                type="password"
+                type={showConfirmPassword ? 'text' : 'password'}
                 value={formData.confirmPassword}
                 onChange={handleInputChange('confirmPassword')}
                 required
@@ -247,6 +259,15 @@ export function SchoolRegistrationPage() {
                     ? 'Passwords do not match'
                     : ''
                 }
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton onClick={() => setShowConfirmPassword(!showConfirmPassword)} edge="end">
+                        {showConfirmPassword ? <VisibilityOff /> : <Visibility />}
+                      </IconButton>
+                    </InputAdornment>
+                  )
+                }}
               />
             </Grid>
           </Grid>

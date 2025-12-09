@@ -92,7 +92,7 @@ export function StudentDashboard() {
           return {
             id: e._id,
             title: e.title,
-            code: e.code,
+            code: e.examCode || '-',
             type: e.type,
             subjects: e.subjects?.map(s => s.name).join(', ') || 'Multiple Subjects',
             date: examDate.toLocaleDateString(),

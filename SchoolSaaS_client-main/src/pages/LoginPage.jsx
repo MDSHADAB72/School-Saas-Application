@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Container, Box, TextField, Button, Typography, Paper, Alert, AppBar, Toolbar, IconButton, FormControl, InputLabel, Select, MenuItem } from '@mui/material';
-import { ArrowBack, Brightness4, Brightness7 } from '@mui/icons-material';
+import { Container, Box, TextField, Button, Typography, Paper, Alert, AppBar, Toolbar, IconButton, FormControl, InputLabel, Select, MenuItem, InputAdornment } from '@mui/material';
+import { ArrowBack, Brightness4, Brightness7, Visibility, VisibilityOff } from '@mui/icons-material';
 import { useAuth } from '../hooks/useAuth';
 import { authService } from '../services/api';
 import { useThemeMode } from '../context/ThemeContext';
@@ -13,6 +13,7 @@ export function LoginPage() {
   const [formData, setFormData] = useState({ role: '', email: '', password: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   const roles = [
     { value: 'super_admin', label: 'Super Admin' },
@@ -132,11 +133,20 @@ export function LoginPage() {
                 fullWidth
                 label="Password"
                 name="password"
-                type="password"
+                type={showPassword ? 'text' : 'password'}
                 value={formData.password}
                 onChange={handleChange}
                 margin="normal"
                 required
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton onClick={() => setShowPassword(!showPassword)} edge="end">
+                        {showPassword ? <VisibilityOff /> : <Visibility />}
+                      </IconButton>
+                    </InputAdornment>
+                  )
+                }}
               />
               <Button
                 fullWidth

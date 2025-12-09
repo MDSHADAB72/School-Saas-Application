@@ -4,15 +4,27 @@ import PrintIcon from '@mui/icons-material/Print';
 import { useAuth } from '../hooks/useAuth';
 import { Header } from '../components/common/Header';
 import { Sidebar } from '../components/common/Sidebar';
-import { examinationService, studentService } from '../services/api';
+import { examinationService, studentService, teacherService } from '../services/api';
 import { templateService } from '../services/templateService';
 import { useNotification } from '../components/common/Notification';
-import { useLocation } from 'react-router-dom';
+import { useLocation, Navigate } from 'react-router-dom';
 import { LoadingBar } from '../components/common/LoadingBar';
+import { TeacherResultsPage } from './TeacherResultsPage';
+import { ExamControllerResultsPage } from './ExamControllerResultsPage';
 
 export function ResultsPage() {
   const { user } = useAuth();
   const location = useLocation();
+
+  // Route teachers to TeacherResultsPage
+  if (user?.role === 'teacher' && !location.state?.exam) {
+    return <TeacherResultsPage />;
+  }
+
+  // Route exam controllers to ExamControllerResultsPage
+  if (user?.role === 'exam_controller' && !location.state?.exam) {
+    return <ExamControllerResultsPage />;
+  }
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(true);
   const [openDialog, setOpenDialog] = useState(false);
@@ -25,6 +37,9 @@ export function ResultsPage() {
 
   const isStudent = user?.role === 'student' || user?.role === 'parent';
   const isTeacher = user?.role === 'teacher' || user?.role === 'school_admin' || user?.role === 'exam_controller';
+
+  // If teacher comes with exam state (from mark entry), show mark entry dialog
+  const showMarkEntry = isTeacher && location.state?.exam && location.state?.student;
 
   useEffect(() => {
     if (location.state?.exam && location.state?.student) {
@@ -47,16 +62,72 @@ export function ResultsPage() {
     }
   };
 
-  const handleOpenDialog = (exam, student) => {
+  const handleOpenDialog = async (exam, student) => {
     setSelectedExam(exam);
     setSelectedStudent(student);
-    setSubjectMarks(exam.subjects.map(sub => ({
-      subjectName: sub.subjectName || sub.name,
-      maxMarks: sub.totalMarks || sub.maxMarks,
-      passingMarks: sub.passingMarks,
-      marksObtained: 0
-    })));
-    setRemarks('');
+    
+    // Filter subjects based on user role
+    let subjectsToShow = exam.subjects;
+    if (user?.role === 'teacher') {
+      // Get teacher's subject
+      try {
+        const teacherResponse = await teacherService.getAllTeachers({ limit: 1000 });
+        const teachers = teacherResponse.data.teachers || [];
+        const currentTeacher = teachers.find(t => {
+          const teacherUserId = t.userId?._id || t.userId;
+          return teacherUserId === user.userId || teacherUserId === user.id;
+        });
+        
+        if (currentTeacher?.subject) {
+          // Filter to show only teacher's subject
+          subjectsToShow = exam.subjects.filter(sub => 
+            (sub.subjectName || sub.name)?.toLowerCase().trim() === currentTeacher.subject?.toLowerCase().trim()
+          );
+        }
+      } catch (error) {
+        console.error('Error fetching teacher data:', error);
+      }
+    }
+    
+    // Try to fetch existing result for this student and exam
+    try {
+      const resultsRes = await examinationService.getExaminationResults(exam._id);
+      const existingResult = resultsRes.data.results?.find(r => r.studentId?._id === student._id);
+      
+      if (existingResult) {
+        // Load existing marks for filtered subjects
+        setSubjectMarks(subjectsToShow.map(sub => {
+          const existingSubject = existingResult.subjectResults?.find(s => s.subjectName === (sub.subjectName || sub.name));
+          return {
+            subjectName: sub.subjectName || sub.name,
+            maxMarks: sub.totalMarks || sub.maxMarks,
+            passingMarks: sub.passingMarks,
+            marksObtained: existingSubject?.marksObtained || 0
+          };
+        }));
+        setRemarks(existingResult.remarks || '');
+      } else {
+        // No existing result, start fresh with filtered subjects
+        setSubjectMarks(subjectsToShow.map(sub => ({
+          subjectName: sub.subjectName || sub.name,
+          maxMarks: sub.totalMarks || sub.maxMarks,
+          passingMarks: sub.passingMarks,
+          marksObtained: 0
+        })));
+        setRemarks('');
+      }
+    } catch (error) {
+      console.error('Error fetching existing result:', error);
+      // If error, start fresh with filtered subjects
+      setSubjectMarks(subjectsToShow.map(sub => ({
+        subjectName: sub.subjectName || sub.name,
+        maxMarks: sub.totalMarks || sub.maxMarks,
+        passingMarks: sub.passingMarks,
+        marksObtained: 0
+      })));
+      setRemarks('');
+    }
+    
     setOpenDialog(true);
   };
 
@@ -68,17 +139,41 @@ export function ResultsPage() {
 
   const handleSubmitResult = async (isDraft) => {
     try {
+      // For teachers, merge their subject marks with existing marks from other subjects
+      let finalSubjectMarks = subjectMarks;
+      
+      if (user?.role === 'teacher') {
+        // Fetch existing result to preserve marks from other subjects
+        try {
+          const resultsRes = await examinationService.getExaminationResults(selectedExam._id);
+          const existingResult = resultsRes.data.results?.find(r => r.studentId?._id === selectedStudent._id);
+          
+          if (existingResult?.subjectResults) {
+            // Merge: keep existing marks for other subjects, update only teacher's subject
+            const teacherSubjectNames = subjectMarks.map(s => s.subjectName);
+            const otherSubjectMarks = existingResult.subjectResults.filter(
+              s => !teacherSubjectNames.includes(s.subjectName)
+            );
+            finalSubjectMarks = [...otherSubjectMarks, ...subjectMarks];
+          }
+        } catch (error) {
+          console.error('Error fetching existing marks:', error);
+        }
+      }
+      
       const data = {
         examinationId: selectedExam._id,
         studentId: selectedStudent._id,
-        subjectResults: subjectMarks,
+        subjectResults: finalSubjectMarks,
         remarks,
         isDraft
       };
       await examinationService.submitResult(data);
       showNotification(`Result ${isDraft ? 'saved as draft' : 'published'} successfully`, 'success');
       setOpenDialog(false);
-      fetchResults();
+      if (isStudent) {
+        fetchResults();
+      }
     } catch (error) {
       showNotification(error.response?.data?.message || 'Error submitting result', 'error');
     }
@@ -265,7 +360,13 @@ export function ResultsPage() {
           )}
 
           {/* Submit Marks Dialog */}
-          <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="md" fullWidth>
+          <Dialog 
+            open={openDialog} 
+            onClose={() => setOpenDialog(false)} 
+            maxWidth="md" 
+            fullWidth
+            disableScrollLock
+          >
             <DialogTitle>
               Submit Marks - {selectedStudent?.userId?.firstName} {selectedStudent?.userId?.lastName}
             </DialogTitle>

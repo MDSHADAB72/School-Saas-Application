@@ -7,6 +7,7 @@ const examinationSchema = new mongoose.Schema({
     required: true
   },
   examName: { type: String, required: true },
+  examCode: { type: String },
   description: String,
   type: { type: String, enum: ['unit', 'midterm', 'final', 'class_test'], default: 'unit' },
   class: { type: String, required: true },
@@ -28,6 +29,7 @@ const examinationSchema = new mongoose.Schema({
       role: { type: String, enum: ['Chief Invigilator', 'Invigilator', 'Relief'], default: 'Invigilator' }
     }]
   }],
+  marksEntryDeadline: { type: Date },
   status: { type: String, enum: ['draft', 'public', 'private'], default: 'draft' },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
 }, { timestamps: true });

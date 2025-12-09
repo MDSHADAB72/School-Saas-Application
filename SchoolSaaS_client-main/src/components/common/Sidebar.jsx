@@ -41,11 +41,13 @@ const getRoleMenuItems = (role) => {
     teacher: [
       { label: 'Attendance', icon: EventIcon, path: '/attendance', roles: ['teacher'] },
       { label: 'Examinations', icon: AssignmentIcon, path: '/examinations', roles: ['teacher'] },
+      { label: 'Results', icon: AssignmentIcon, path: '/results', roles: ['teacher'] },
       { label: 'Assignments', icon: AssignmentIcon, path: '/assignments', roles: ['teacher'] },
       { label: 'Students', icon: GroupIcon, path: '/students', roles: ['teacher'] },
     ],
     student: [
       { label: 'Attendance', icon: EventIcon, path: '/attendance', roles: ['student'] },
+      { label: 'Examinations', icon: AssignmentIcon, path: '/examinations', roles: ['student'] },
       { label: 'Results', icon: AssignmentIcon, path: '/results', roles: ['student'] },
       { label: 'Assignments', icon: AssignmentIcon, path: '/assignments', roles: ['student'] },
       { label: 'Fees', icon: PaymentIcon, path: '/fees', roles: ['student'] },
