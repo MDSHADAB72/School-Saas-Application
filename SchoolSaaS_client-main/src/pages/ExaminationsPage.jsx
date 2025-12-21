@@ -117,6 +117,8 @@ export function ExaminationsPage() {
   const [students, setStudents] = useState([]);
   const [results, setResults] = useState([]);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
   const { showNotification, NotificationComponent } = useNotification();
   const [formData, setFormData] = useState({
     title: '',
@@ -138,14 +140,14 @@ export function ExaminationsPage() {
 
   useEffect(() => {
     if (user) {
-      fetchExaminations();
+      fetchExaminations(1);
     }
   }, [user]);
 
-  const fetchExaminations = async () => {
+  const fetchExaminations = async (page = 1) => {
     try {
       setLoading(true);
-      const params = { page: 1, limit: 100 };
+      const params = { page, limit: 10 };
       // Teachers, students, and school admins only see public exams
       if (user?.role === 'teacher' || user?.role === 'student' || user?.role === 'school_admin') {
         params.status = 'public';
@@ -154,7 +156,27 @@ export function ExaminationsPage() {
       console.log('User role:', user?.role);
       const response = await examinationService.getAllExaminations(params);
       console.log('Exams received:', response.data.examinations);
+      
       setExaminations(response.data.examinations);
+      
+      // Handle totalCount
+      let count = response.data.totalCount;
+      if (count === undefined || count === null) {
+        try {
+          // Get actual count by fetching all examinations
+          const allExamsResponse = await examinationService.getAllExaminations({ 
+            ...params, 
+            page: 1, 
+            limit: 1000 
+          });
+          count = allExamsResponse.data.examinations?.length || response.data.examinations?.length || 0;
+        } catch (error) {
+          count = response.data.examinations?.length || 0;
+        }
+      }
+      
+      setTotalCount(count);
+      setCurrentPage(page);
     } catch (error) {
       console.error('Error fetching examinations:', error);
       showNotification('Error fetching examinations', 'error');
@@ -216,7 +238,7 @@ export function ExaminationsPage() {
       await examinationService.createExamination(dataToSave);
       showNotification('Examination created successfully', 'success');
       setOpenDialog(false);
-      fetchExaminations();
+      fetchExaminations(currentPage);
       resetForm();
     } catch (error) {
       console.error('Error creating examination:', error);
@@ -228,7 +250,7 @@ export function ExaminationsPage() {
     try {
       await examinationService.updateExaminationStatus(examId, newStatus);
       showNotification(`Status updated to ${newStatus}`, 'success');
-      fetchExaminations();
+      fetchExaminations(currentPage);
     } catch (error) {
       showNotification('Error updating status', 'error');
     }
@@ -316,6 +338,10 @@ export function ExaminationsPage() {
   };
 
 
+
+  const handlePageChange = async (page) => {
+    await fetchExaminations(page);
+  };
 
   if (loading) return <LoadingBar />;
 
@@ -428,6 +454,37 @@ export function ExaminationsPage() {
               </TableBody>
             </Table>
           </TableContainer>
+
+          {/* Pagination Controls */}
+          {(() => {
+            const totalPages = Math.ceil(totalCount / 10);
+            
+            if (totalPages > 1) return (
+              <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 2, mt: 3 }}>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  disabled={currentPage === 1}
+                  onClick={() => handlePageChange(Math.max(1, currentPage - 1))}
+                >
+                  Previous
+                </Button>
+                <Typography variant="body2">
+                  Page {currentPage} of {totalPages}
+                </Typography>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  disabled={currentPage >= totalPages}
+                  onClick={() => handlePageChange(Math.min(totalPages, currentPage + 1))}
+                >
+                  Next
+                </Button>
+              </Box>
+            );
+            
+            return null;
+          })()}
 
           {/* Create Examination Dialog */}
           <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="md" fullWidth>

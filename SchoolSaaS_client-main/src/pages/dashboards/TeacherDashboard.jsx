@@ -1,46 +1,58 @@
-import { Grid, Paper, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Box, Button } from '@mui/material';
+import { Grid, Paper, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Box, Button, Chip } from '@mui/material';
 import { useEffect, useState } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { DashboardLayout } from '../../components/common/DashboardLayout';
 import { StatCard } from '../../components/common/StatCard';
-import { QuickActions } from '../../components/common/QuickActions';
 import GroupIcon from '@mui/icons-material/Group';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import EventIcon from '@mui/icons-material/Event';
 import GradeIcon from '@mui/icons-material/Grade';
-import AddIcon from '@mui/icons-material/Add';
+import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
 import AnnouncementIcon from '@mui/icons-material/Announcement';
-import { studentService, assignmentService, attendanceService } from '../../services/api.js';
-import { ExportData } from '../../components/common/ExportData';
+import { studentService, assignmentService, attendanceService, examinationService } from '../../services/api.js';
 import { LoadingBar } from '../../components/common/LoadingBar';
+import { useNavigate } from 'react-router-dom';
 
 
 export function TeacherDashboard() {
   const { user } = useAuth();
-  const [stats, setStats] = useState({ students: 0, assignments: 0, attendance: 0, grades: 0 });
+  const navigate = useNavigate();
+  const [stats, setStats] = useState({ students: 0, assignments: 0, attendance: 0, grades: 0, upcomingExams: 0, pendingResults: 0 });
   const [recentActivities, setRecentActivities] = useState([]);
+  const [upcomingExams, setUpcomingExams] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [studentsRes, assignmentsRes, attendanceRes] = await Promise.all([
+        const [studentsRes, assignmentsRes, attendanceRes, examsRes] = await Promise.all([
           studentService.getAllStudents({ page: 1, limit: 5 }),
           assignmentService.getAllAssignments({ page: 1, limit: 5 }),
-          attendanceService.getAllAttendance({ page: 1, limit: 1 })
+          attendanceService.getAllAttendance({ page: 1, limit: 1 }),
+          examinationService.getAllExaminations({ page: 1, limit: 100 })
         ]);
+        
+        const allExams = examsRes.data.examinations || [];
+        const now = new Date();
+        const upcoming = allExams.filter(exam => new Date(exam.examStartDate) > now);
+        const completed = allExams.filter(exam => new Date(exam.examEndDate) < now);
+        
+        setUpcomingExams(upcoming.slice(0, 5));
         
         setRecentActivities(assignmentsRes.data.assignments?.slice(0, 5).map((a, i) => ({
           id: a._id,
           activity: `Assignment: ${a.title}`,
-          time: new Date(a.createdAt).toLocaleDateString()
+          time: new Date(a.createdAt).toLocaleDateString(),
+          type: 'assignment'
         })) || []);
         
         setStats({
           students: studentsRes.data.pagination?.total || 0,
           assignments: assignmentsRes.data.pagination?.total || 0,
           attendance: attendanceRes.data.pagination?.total || 0,
-          grades: assignmentsRes.data.assignments?.filter(a => a.submissions?.length > 0).length || 0
+          grades: assignmentsRes.data.assignments?.filter(a => a.submissions?.length > 0).length || 0,
+          upcomingExams: upcoming.length,
+          pendingResults: completed.length
         });
       } catch (error) {
         console.error('Error fetching data:', error);
@@ -68,166 +80,167 @@ export function TeacherDashboard() {
         Teacher Dashboard
       </Typography>
 
-      <Grid container spacing={{ xs: 2, sm: 3 }} sx={{ mb: { xs: 2, sm: 3, md: 4 } }}>
-        <Grid item xs={12} sm={6} lg={3}>
-          <StatCard title="My Students" value={stats.students} icon={GroupIcon} color="#667eea" />
+      {/* Statistics Cards */}
+      <Grid container spacing={3} sx={{ mb: 4 }}>
+        <Grid item xs={12} sm={6} lg={2}>
+          <Box onClick={() => navigate('/students')} sx={{ cursor: 'pointer' }}>
+            <StatCard title="My Students" value={stats.students} icon={GroupIcon} color="#1976d2" />
+          </Box>
         </Grid>
-        <Grid item xs={12} sm={6} lg={3}>
-          <StatCard title="Assignments" value={stats.assignments} icon={AssignmentIcon} color="#764ba2" />
+        <Grid item xs={12} sm={6} lg={2}>
+          <Box onClick={() => navigate('/assignments')} sx={{ cursor: 'pointer' }}>
+            <StatCard title="Assignments" value={stats.assignments} icon={AssignmentIcon} color="#2e7d32" />
+          </Box>
         </Grid>
-        <Grid item xs={12} sm={6} lg={3}>
-          <StatCard title="Attendance Records" value={stats.attendance} icon={EventIcon} color="#f093fb" />
+        <Grid item xs={12} sm={6} lg={2}>
+          <Box onClick={() => navigate('/attendance')} sx={{ cursor: 'pointer' }}>
+            <StatCard title="Attendance" value={stats.attendance} icon={EventIcon} color="#ed6c02" />
+          </Box>
         </Grid>
-        <Grid item xs={12} sm={6} lg={3}>
-          <StatCard title="Grades Given" value={stats.grades} icon={GradeIcon} color="#4facfe" />
+        <Grid item xs={12} sm={6} lg={2}>
+          <Box onClick={() => navigate('/examinations')} sx={{ cursor: 'pointer' }}>
+            <StatCard title="Upcoming Exams" value={stats.upcomingExams} icon={CalendarTodayIcon} color="#9c27b0" />
+          </Box>
+        </Grid>
+        <Grid item xs={12} sm={6} lg={2}>
+          <Box onClick={() => navigate('/teacher-results')} sx={{ cursor: 'pointer' }}>
+            <StatCard title="Pending Results" value={stats.pendingResults} icon={GradeIcon} color="#d32f2f" />
+          </Box>
+        </Grid>
+        <Grid item xs={12} sm={6} lg={2}>
+          <Box onClick={() => navigate('/announcements')} sx={{ cursor: 'pointer' }}>
+            <StatCard title="Announcements" value={0} icon={AnnouncementIcon} color="#0288d1" />
+          </Box>
         </Grid>
       </Grid>
 
-      <QuickActions 
-        title="Teacher Actions"
-        actions={[
-          { label: 'Mark Attendance', icon: EventIcon, path: '/attendance', color: '#e3f2fd' },
-          { label: 'Create Assignment', icon: AddIcon, path: '/assignments', color: '#f3e5f5' },
-          { label: 'Grade Papers', icon: GradeIcon, path: '/examinations', color: '#e8f5e8' },
-          { label: 'View Students', icon: GroupIcon, path: '/students', color: '#fff3e0' },
-          { label: 'Send Announcement', icon: AnnouncementIcon, path: '/announcements', color: '#fce4ec' }
-        ]}
-      />
-
-      <Grid container spacing={{ xs: 2, sm: 3 }}>
+      <Grid container spacing={3}>
+        {/* Upcoming Exams */}
         <Grid item xs={12} lg={8}>
-          <Paper sx={{ 
-            p: { xs: 2, sm: 3 }, 
-            boxShadow: 2,
-            overflow: 'hidden'
-          }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-              <Typography 
-                variant="h6" 
-                sx={{ 
-                  fontWeight: 'bold',
-                  fontSize: { xs: '1.1rem', sm: '1.25rem' }
-                }}
-              >
-                Recent Activities
-              </Typography>
-              <ExportData 
-                data={recentActivities.map(a => ({
-                  Activity: a.activity,
-                  Time: a.time
-                }))}
-                filename="activities"
-                title="Activities Report"
-                dateField="time"
-              />
-            </Box>
-            
-            <Box sx={{ overflow: 'auto' }}>
+          <Paper sx={{ p: 3, boxShadow: 1 }}>
+            <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <CalendarTodayIcon color="primary" />
+              Upcoming Examinations
+            </Typography>
+            {upcomingExams.length > 0 ? (
               <TableContainer>
-                <Table size="small">
-                  <TableHead sx={{ backgroundColor: '#f5f5f5' }}>
+                <Table>
+                  <TableHead>
                     <TableRow>
-                      <TableCell sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
-                        <strong>Activity</strong>
-                      </TableCell>
-                      <TableCell sx={{ 
-                        fontSize: { xs: '0.75rem', sm: '0.875rem' },
-                        display: { xs: 'none', sm: 'table-cell' }
-                      }}>
-                        <strong>Time</strong>
-                      </TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Exam Name</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Class</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Start Date</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {recentActivities.map((activity) => (
-                      <TableRow key={activity.id} hover>
-                        <TableCell sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
-                          {activity.activity}
-                          <Typography 
-                            variant="caption" 
-                            sx={{ 
-                              display: { xs: 'block', sm: 'none' },
-                              color: 'text.secondary',
-                              fontSize: '0.7rem'
-                            }}
-                          >
-                            {activity.time}
-                          </Typography>
-                        </TableCell>
-                        <TableCell sx={{ 
-                          fontSize: { xs: '0.75rem', sm: '0.875rem' },
-                          display: { xs: 'none', sm: 'table-cell' }
-                        }}>
-                          {activity.time}
+                    {upcomingExams.map((exam) => (
+                      <TableRow key={exam._id} hover sx={{ cursor: 'pointer' }} onClick={() => navigate('/examinations')}>
+                        <TableCell>{exam.examName}</TableCell>
+                        <TableCell>{exam.class}-{exam.section}</TableCell>
+                        <TableCell>{new Date(exam.examStartDate).toLocaleDateString()}</TableCell>
+                        <TableCell>
+                          <Chip 
+                            label={exam.status || 'draft'} 
+                            size="small"
+                            color={exam.status === 'public' ? 'success' : exam.status === 'private' ? 'warning' : 'default'}
+                          />
                         </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
               </TableContainer>
-            </Box>
+            ) : (
+              <Box sx={{ textAlign: 'center', py: 4 }}>
+                <CalendarTodayIcon sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
+                <Typography color="text.secondary" variant="body1">
+                  No upcoming examinations
+                </Typography>
+              </Box>
+            )}
           </Paper>
         </Grid>
 
+        {/* Quick Actions & Recent Activity */}
         <Grid item xs={12} lg={4}>
-          <Paper sx={{ 
-            p: { xs: 2, sm: 3 }, 
-            boxShadow: 2
-          }}>
-            <Typography 
-              variant="h6" 
-              sx={{ 
-                mb: 2, 
-                fontWeight: 'bold',
-                fontSize: { xs: '1.1rem', sm: '1.25rem' }
-              }}
-            >
-              Quick Actions
-            </Typography>
-            
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              <Button 
-                variant="contained" 
-                fullWidth
-                sx={{ 
-                  py: { xs: 1, sm: 1.5 },
-                  fontSize: { xs: '0.875rem', sm: '1rem' }
-                }}
-              >
-                Mark Attendance
-              </Button>
-              <Button 
-                variant="outlined" 
-                fullWidth
-                sx={{ 
-                  py: { xs: 1, sm: 1.5 },
-                  fontSize: { xs: '0.875rem', sm: '1rem' }
-                }}
-              >
-                Create Assignment
-              </Button>
-              <Button 
-                variant="outlined" 
-                fullWidth
-                sx={{ 
-                  py: { xs: 1, sm: 1.5 },
-                  fontSize: { xs: '0.875rem', sm: '1rem' }
-                }}
-              >
-                Grade Papers
-              </Button>
-              <Button 
-                variant="outlined" 
-                fullWidth
-                sx={{ 
-                  py: { xs: 1, sm: 1.5 },
-                  fontSize: { xs: '0.875rem', sm: '1rem' }
-                }}
-              >
-                Send Announcement
-              </Button>
-            </Box>
-          </Paper>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            {/* Quick Actions */}
+            <Paper sx={{ p: 3, boxShadow: 1 }}>
+              <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
+                Quick Actions
+              </Typography>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <Button 
+                  variant="contained" 
+                  fullWidth 
+                  startIcon={<EventIcon />}
+                  onClick={() => navigate('/attendance')}
+                >
+                  Mark Attendance
+                </Button>
+                <Button 
+                  variant="outlined" 
+                  fullWidth 
+                  startIcon={<AssignmentIcon />}
+                  onClick={() => navigate('/assignments')}
+                >
+                  Create Assignment
+                </Button>
+                <Button 
+                  variant="outlined" 
+                  fullWidth 
+                  startIcon={<GradeIcon />}
+                  onClick={() => navigate('/teacher-results')}
+                >
+                  Enter Results
+                </Button>
+                <Button 
+                  variant="outlined" 
+                  fullWidth 
+                  startIcon={<AnnouncementIcon />}
+                  onClick={() => navigate('/announcements')}
+                >
+                  Send Announcement
+                </Button>
+              </Box>
+            </Paper>
+
+            {/* Recent Activities */}
+            <Paper sx={{ p: 3, boxShadow: 1 }}>
+              <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
+                Recent Activities
+              </Typography>
+              {recentActivities.length > 0 ? (
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  {recentActivities.map((activity) => (
+                    <Box 
+                      key={activity.id} 
+                      sx={{ 
+                        p: 2, 
+                        border: '1px solid #e0e0e0', 
+                        borderRadius: 1,
+                        cursor: 'pointer',
+                        '&:hover': { bgcolor: '#f5f5f5' }
+                      }}
+                      onClick={() => navigate('/assignments')}
+                    >
+                      <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                        {activity.activity}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {activity.time}
+                      </Typography>
+                    </Box>
+                  ))}
+                </Box>
+              ) : (
+                <Typography color="text.secondary" variant="body2">
+                  No recent activities
+                </Typography>
+              )}
+            </Paper>
+          </Box>
         </Grid>
       </Grid>
     </DashboardLayout>

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Box, Container, Paper, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, Dialog, DialogTitle, DialogContent, DialogActions, TextField, MenuItem, Chip, IconButton, Accordion, AccordionSummary, AccordionDetails, ButtonGroup } from '@mui/material';
+import { Box, Container, Paper, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, Dialog, DialogTitle, DialogContent, DialogActions, TextField, MenuItem, Chip, IconButton, Accordion, AccordionSummary, AccordionDetails, ButtonGroup, Pagination } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
@@ -27,6 +27,15 @@ export function ExamControllerExaminationsPageNew() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const { showNotification, NotificationComponent } = useNotification();
   const [teachers, setTeachers] = useState([]);
+  const [filterClass, setFilterClass] = useState('');
+  const [filterSection, setFilterSection] = useState('');
+  const [availableClasses, setAvailableClasses] = useState([]);
+  const [availableSections, setAvailableSections] = useState([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [examsPerPage] = useState(10);
+  const [totalCount, setTotalCount] = useState(0);
+
+  const [studentPages, setStudentPages] = useState({});
   const [formData, setFormData] = useState({
     examName: '',
     examCode: '',
@@ -49,13 +58,14 @@ export function ExamControllerExaminationsPageNew() {
       invigilators: []
     }]
   });
+  const [errors, setErrors] = useState({});
 
   useEffect(() => {
     if (user) {
-      fetchExaminations();
+      fetchExaminations(currentPage);
       fetchTeachers();
     }
-  }, [user]);
+  }, [user, currentPage]);
 
   const fetchTeachers = async () => {
     try {
@@ -66,11 +76,37 @@ export function ExamControllerExaminationsPageNew() {
     }
   };
 
-  const fetchExaminations = async () => {
+  const fetchExaminations = async (page = 1) => {
     try {
       setLoading(true);
-      const response = await examinationService.getAllExaminations({ page: 1, limit: 100 });
-      setExaminations(response.data.examinations);
+      const response = await examinationService.getAllExaminations({ page, limit: examsPerPage });
+      setExaminations(response.data.examinations || []);
+      
+      // Handle totalCount properly
+      let count = response.data.totalCount;
+      if (count === undefined || count === null) {
+        try {
+          const allExamsResponse = await examinationService.getAllExaminations({ page: 1, limit: 1000 });
+          count = allExamsResponse.data.examinations?.length || 0;
+        } catch (error) {
+          count = response.data.examinations?.length || 0;
+        }
+      }
+      
+      setTotalCount(count);
+      
+      // For filters, we still need all exams - this is a limitation we'll accept for now
+      // In a real implementation, filters would be handled server-side
+      if (page === 1) {
+        const allResponse = await examinationService.getAllExaminations({ page: 1, limit: 1000 });
+        const allExams = allResponse.data.examinations || [];
+        
+        // Extract unique classes and sections
+        const classes = [...new Set(allExams.map(exam => exam.class).filter(Boolean))];
+        const sections = [...new Set(allExams.map(exam => exam.section).filter(Boolean))];
+        setAvailableClasses(classes.sort());
+        setAvailableSections(sections.sort());
+      }
     } catch (error) {
       showNotification('Error fetching examinations', 'error');
     } finally {
@@ -215,7 +251,7 @@ export function ExamControllerExaminationsPageNew() {
     try {
       await examinationService.updateExaminationStatus(examId, newStatus);
       showNotification(`Status updated to ${newStatus}`, 'success');
-      fetchExaminations();
+      fetchExaminations(currentPage);
     } catch (error) {
       showNotification('Error updating status', 'error');
     }
@@ -293,7 +329,7 @@ export function ExamControllerExaminationsPageNew() {
     try {
       await examinationService.deleteExamination(examId);
       showNotification('Examination deleted successfully', 'success');
-      fetchExaminations();
+      fetchExaminations(currentPage);
     } catch (error) {
       showNotification('Error deleting examination', 'error');
     }
@@ -343,38 +379,109 @@ export function ExamControllerExaminationsPageNew() {
     setOpenDialog(true);
   };
 
+  const validateForm = () => {
+    const newErrors = {};
+    
+    // Basic required fields
+    if (!formData.examName?.trim()) {
+      newErrors.examName = 'Examination name is required';
+    } else if (formData.examName.length < 3 || formData.examName.length > 100) {
+      newErrors.examName = 'Must be between 3-100 characters';
+    }
+    
+    if (!formData.class?.trim()) {
+      newErrors.class = 'Class is required';
+    }
+    
+    if (!formData.section?.trim()) {
+      newErrors.section = 'Section is required';
+    }
+    
+    if (!formData.examStartDate) {
+      newErrors.examStartDate = 'Start date is required';
+    }
+    
+    if (!formData.examEndDate) {
+      newErrors.examEndDate = 'End date is required';
+    }
+
+    // Date validations
+    if (formData.examStartDate && formData.examEndDate) {
+      const startDate = new Date(formData.examStartDate);
+      const endDate = new Date(formData.examEndDate);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      if (startDate < today) {
+        newErrors.examStartDate = 'Cannot be in the past';
+      }
+      if (endDate < startDate) {
+        newErrors.examEndDate = 'Must be after start date';
+      }
+    }
+
+    // Optional field validations
+    if (formData.examCode && (formData.examCode.length < 2 || formData.examCode.length > 20)) {
+      newErrors.examCode = 'Must be between 2-20 characters';
+    }
+    if (formData.description && formData.description.length > 500) {
+      newErrors.description = 'Cannot exceed 500 characters';
+    }
+
+    // Subject validations
+    const validSubjects = formData.subjects.filter(s => 
+      s.subjectName?.trim() && s.examDate && s.startTime && s.maxMarks && s.totalMarks
+    );
+    
+    if (validSubjects.length === 0) {
+      newErrors.subjects = 'At least one valid subject required';
+    }
+
+    // Validate each subject
+    formData.subjects.forEach((subject, i) => {
+      if (subject.subjectName?.trim()) {
+        if (subject.subjectName.length < 2 || subject.subjectName.length > 50) {
+          newErrors[`subject_${i}_name`] = 'Must be 2-50 characters';
+        }
+        if (!subject.examDate) {
+          newErrors[`subject_${i}_date`] = 'Date required';
+        }
+        if (!subject.startTime) {
+          newErrors[`subject_${i}_time`] = 'Time required';
+        }
+        if (subject.duration < 30 || subject.duration > 480) {
+          newErrors[`subject_${i}_duration`] = 'Must be 30-480 minutes';
+        }
+        if (subject.maxMarks < 1 || subject.maxMarks > 1000) {
+          newErrors[`subject_${i}_maxMarks`] = 'Must be 1-1000';
+        }
+        if (subject.totalMarks < 1 || subject.totalMarks > 1000) {
+          newErrors[`subject_${i}_totalMarks`] = 'Must be 1-1000';
+        }
+        if (subject.passingMarks < 0 || subject.passingMarks > subject.totalMarks) {
+          newErrors[`subject_${i}_passingMarks`] = 'Must be 0 to total marks';
+        }
+      }
+    });
+
+    setErrors(newErrors);
+    
+    if (Object.keys(newErrors).length > 0) {
+      showNotification('Please fix validation errors', 'error');
+      return false;
+    }
+    return true;
+  };
+
   const handleSave = async () => {
     try {
-      if (!formData.examName || !formData.class || !formData.section || !formData.examStartDate || !formData.examEndDate) {
-        showNotification('Please fill all required fields', 'error');
+      if (!validateForm()) {
         return;
       }
 
       const validSubjects = formData.subjects.filter(s => 
-        s.subjectName && s.examDate && s.startTime && s.maxMarks && s.totalMarks
+        s.subjectName?.trim() && s.examDate && s.startTime && s.maxMarks && s.totalMarks
       );
-      
-      if (validSubjects.length === 0) {
-        showNotification('Please add at least one valid subject with all details', 'error');
-        return;
-      }
-
-      // Validate all subject dates are within exam period
-      const invalidDates = validSubjects.filter(s => 
-        s.examDate < formData.examStartDate || s.examDate > formData.examEndDate
-      );
-      if (invalidDates.length > 0) {
-        showNotification('All subject exam dates must be between exam start and end dates', 'error');
-        return;
-      }
-
-      // Check for duplicate date/time combinations
-      const dateTimeCombos = validSubjects.map(s => `${s.examDate}-${s.startTime}`);
-      const duplicates = dateTimeCombos.filter((item, index) => dateTimeCombos.indexOf(item) !== index);
-      if (duplicates.length > 0) {
-        showNotification('Multiple subjects cannot have the same date and time', 'error');
-        return;
-      }
 
       const dataToSave = {
         ...formData,
@@ -391,7 +498,7 @@ export function ExamControllerExaminationsPageNew() {
       
       setOpenDialog(false);
       setEditMode(false);
-      fetchExaminations();
+      fetchExaminations(currentPage);
       resetForm();
     } catch (error) {
       console.error('Error saving examination:', error);
@@ -422,6 +529,7 @@ export function ExamControllerExaminationsPageNew() {
         invigilators: []
       }]
     });
+    setErrors({});
   };
 
   if (loading) return <LoadingBar />;
@@ -441,6 +549,48 @@ export function ExamControllerExaminationsPageNew() {
             </Button>
           </Box>
 
+          {/* Filter Section */}
+          <Paper sx={{ p: 3, mb: 3, boxShadow: 1 }}>
+            <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold' }}>
+              Filter Examinations
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+              <TextField
+                label="Class"
+                select
+                value={filterClass}
+                onChange={(e) => setFilterClass(e.target.value)}
+                sx={{ minWidth: 120 }}
+                size="small"
+              >
+                <MenuItem value="">All Classes</MenuItem>
+                {availableClasses.map((cls) => (
+                  <MenuItem key={cls} value={cls}>{cls}</MenuItem>
+                ))}
+              </TextField>
+              <TextField
+                label="Section"
+                select
+                value={filterSection}
+                onChange={(e) => setFilterSection(e.target.value)}
+                sx={{ minWidth: 120 }}
+                size="small"
+              >
+                <MenuItem value="">All Sections</MenuItem>
+                {availableSections.map((section) => (
+                  <MenuItem key={section} value={section}>{section}</MenuItem>
+                ))}
+              </TextField>
+              <Button 
+                variant="outlined" 
+                onClick={() => { setFilterClass(''); setFilterSection(''); }}
+                size="small"
+              >
+                Clear Filters
+              </Button>
+            </Box>
+          </Paper>
+
           <TableContainer component={Paper} sx={{ boxShadow: 2 }}>
             <Table>
               <TableHead sx={{ backgroundColor: '#f5f5f5' }}>
@@ -456,13 +606,15 @@ export function ExamControllerExaminationsPageNew() {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {examinations.map((exam) => (
-                  <TableRow 
-                    key={exam._id} 
-                    hover 
-                    sx={{ cursor: 'pointer' }} 
-                    onClick={() => handleExamClick(exam)}
-                  >
+                {examinations.map((exam) => {
+                  const isExamEnded = new Date() > new Date(exam.examEndDate);
+                  return (
+                <TableRow 
+                  key={exam._id} 
+                  hover 
+                  sx={{ cursor: 'pointer' }} 
+                  onClick={() => handleExamClick(exam)}
+                >
                     <TableCell>{exam.examName}</TableCell>
                     <TableCell>{exam.class}-{exam.section}</TableCell>
                     <TableCell>{exam.type}</TableCell>
@@ -484,6 +636,7 @@ export function ExamControllerExaminationsPageNew() {
                         <Button 
                           onClick={() => handleStatusChange(exam._id, 'draft')}
                           variant={exam.status === 'draft' ? 'contained' : 'outlined'}
+                          disabled={isExamEnded}
                         >
                           Draft
                         </Button>
@@ -491,6 +644,7 @@ export function ExamControllerExaminationsPageNew() {
                           onClick={() => handleStatusChange(exam._id, 'public')}
                           variant={exam.status === 'public' ? 'contained' : 'outlined'}
                           color="success"
+                          disabled={isExamEnded}
                         >
                           Public
                         </Button>
@@ -498,6 +652,7 @@ export function ExamControllerExaminationsPageNew() {
                           onClick={() => handleStatusChange(exam._id, 'private')}
                           variant={exam.status === 'private' ? 'contained' : 'outlined'}
                           color="warning"
+                          disabled={isExamEnded}
                         >
                           Private
                         </Button>
@@ -513,18 +668,52 @@ export function ExamControllerExaminationsPageNew() {
                       </IconButton>
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           </TableContainer>
+
+          {/* Pagination */}
+          {(() => {
+            const totalPages = Math.ceil(totalCount / examsPerPage);
+            
+            if (totalPages > 1) return (
+              <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 2, mt: 3 }}>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  disabled={currentPage === 1}
+                  onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                >
+                  Previous
+                </Button>
+                <Typography variant="body2">
+                  Page {currentPage} of {totalPages}
+                </Typography>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  disabled={currentPage >= totalPages}
+                  onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                >
+                  Next
+                </Button>
+              </Box>
+            );
+            
+            return null;
+          })()}
 
           {/* Exam Detail Dialog */}
           <Dialog open={openDetailDialog} onClose={() => setOpenDetailDialog(false)} maxWidth="md" fullWidth>
             <DialogTitle sx={{ bgcolor: 'primary.main', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <Box sx={{ fontWeight: 'bold', fontSize: '1.5rem' }}>{selectedExam?.examName}</Box>
-              <Button startIcon={<AddIcon />} variant="contained" color="secondary" onClick={handleEdit}>
-                Edit
-              </Button>
+              {selectedExam && new Date() <= new Date(selectedExam.examEndDate) && (
+                <Button startIcon={<AddIcon />} variant="contained" color="secondary" onClick={handleEdit}>
+                  Edit
+                </Button>
+              )}
             </DialogTitle>
             <DialogContent sx={{ pt: 3 }}>
               {selectedExam && (
@@ -637,23 +826,41 @@ export function ExamControllerExaminationsPageNew() {
                   <TextField
                     label="Examination Name"
                     value={formData.examName}
-                    onChange={(e) => setFormData(prev => ({ ...prev, examName: e.target.value }))}
+                    onChange={(e) => {
+                      setFormData(prev => ({ ...prev, examName: e.target.value }));
+                      if (errors.examName) setErrors(prev => ({ ...prev, examName: null }));
+                    }}
                     required
                     placeholder="e.g., Final Exam 2024"
+                    inputProps={{ maxLength: 50 }}
+                    helperText={errors.examName || `${formData.examName.length}/50 characters`}
+                    error={!!errors.examName}
                   />
                   <TextField
                     label="Exam Code"
                     value={formData.examCode}
-                    onChange={(e) => setFormData(prev => ({ ...prev, examCode: e.target.value }))}
+                    onChange={(e) => {
+                      setFormData(prev => ({ ...prev, examCode: e.target.value.toUpperCase() }));
+                      if (errors.examCode) setErrors(prev => ({ ...prev, examCode: null }));
+                    }}
                     placeholder="e.g., FE2024"
+                    inputProps={{ maxLength: 10 }}
+                    helperText={errors.examCode || "Optional - 2-10 characters"}
+                    error={!!errors.examCode}
                   />
                 </Box>
                 <TextField
                   label="Description"
                   value={formData.description}
-                  onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+                  onChange={(e) => {
+                    setFormData(prev => ({ ...prev, description: e.target.value }));
+                    if (errors.description) setErrors(prev => ({ ...prev, description: null }));
+                  }}
                   multiline
                   rows={2}
+                  inputProps={{ maxLength: 500 }}
+                  helperText={errors.description || `${formData.description.length}/500 characters`}
+                  error={!!errors.description}
                 />
                 <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 2 }}>
                   <TextField
@@ -670,14 +877,28 @@ export function ExamControllerExaminationsPageNew() {
                   <TextField
                     label="Class"
                     value={formData.class}
-                    onChange={(e) => setFormData(prev => ({ ...prev, class: e.target.value }))}
+                    onChange={(e) => {
+                      const value = e.target.value.replace(/[^0-9]/g, '');
+                      setFormData(prev => ({ ...prev, class: value }));
+                      if (errors.class) setErrors(prev => ({ ...prev, class: null }));
+                    }}
                     required
+                    inputProps={{ maxLength: 3 }}
+                    helperText={errors.class || "Numbers only - e.g., 1, 10, 12"}
+                    error={!!errors.class}
                   />
                   <TextField
                     label="Section"
                     value={formData.section}
-                    onChange={(e) => setFormData(prev => ({ ...prev, section: e.target.value }))}
+                    onChange={(e) => {
+                      const value = e.target.value.replace(/[^A-Za-z]/g, '').toUpperCase();
+                      setFormData(prev => ({ ...prev, section: value }));
+                      if (errors.section) setErrors(prev => ({ ...prev, section: null }));
+                    }}
                     required
+                    inputProps={{ maxLength: 3 }}
+                    helperText={errors.section || "Letters only - e.g., A, B, AB"}
+                    error={!!errors.section}
                   />
                 </Box>
                 <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
@@ -685,17 +906,27 @@ export function ExamControllerExaminationsPageNew() {
                     label="Exam Start Date"
                     type="date"
                     value={formData.examStartDate}
-                    onChange={(e) => setFormData(prev => ({ ...prev, examStartDate: e.target.value }))}
+                    onChange={(e) => {
+                      setFormData(prev => ({ ...prev, examStartDate: e.target.value }));
+                      if (errors.examStartDate) setErrors(prev => ({ ...prev, examStartDate: null }));
+                    }}
                     InputLabelProps={{ shrink: true }}
                     required
+                    helperText={errors.examStartDate}
+                    error={!!errors.examStartDate}
                   />
                   <TextField
                     label="Exam End Date"
                     type="date"
                     value={formData.examEndDate}
-                    onChange={(e) => setFormData(prev => ({ ...prev, examEndDate: e.target.value }))}
+                    onChange={(e) => {
+                      setFormData(prev => ({ ...prev, examEndDate: e.target.value }));
+                      if (errors.examEndDate) setErrors(prev => ({ ...prev, examEndDate: null }));
+                    }}
                     InputLabelProps={{ shrink: true }}
                     required
+                    helperText={errors.examEndDate}
+                    error={!!errors.examEndDate}
                   />
                 </Box>
 
@@ -711,14 +942,24 @@ export function ExamControllerExaminationsPageNew() {
                           <TextField
                             label="Subject Name"
                             value={subject.subjectName}
-                            onChange={(e) => handleSubjectChange(subIdx, 'subjectName', e.target.value)}
+                            onChange={(e) => {
+                              handleSubjectChange(subIdx, 'subjectName', e.target.value);
+                              if (errors[`subject_${subIdx}_name`]) {
+                                setErrors(prev => ({ ...prev, [`subject_${subIdx}_name`]: null }));
+                              }
+                            }}
                             required
+                            inputProps={{ maxLength: 50 }}
+                            helperText={errors[`subject_${subIdx}_name`] || "Required - 2-50 characters"}
+                            error={!!errors[`subject_${subIdx}_name`]}
                           />
                           <TextField
                             label="Subject Code"
                             value={subject.subjectCode}
-                            onChange={(e) => handleSubjectChange(subIdx, 'subjectCode', e.target.value)}
+                            onChange={(e) => handleSubjectChange(subIdx, 'subjectCode', e.target.value.toUpperCase())}
                             placeholder="e.g., MATH101"
+                            inputProps={{ maxLength: 20 }}
+                            helperText="Optional - 2-20 characters"
                           />
                         </Box>
                         <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 2 }}>
@@ -726,48 +967,75 @@ export function ExamControllerExaminationsPageNew() {
                             label="Exam Date"
                             type="date"
                             value={subject.examDate}
-                            onChange={(e) => handleSubjectChange(subIdx, 'examDate', e.target.value)}
+                            onChange={(e) => {
+                              handleSubjectChange(subIdx, 'examDate', e.target.value);
+                              if (errors[`subject_${subIdx}_date`]) {
+                                setErrors(prev => ({ ...prev, [`subject_${subIdx}_date`]: null }));
+                              }
+                            }}
                             InputLabelProps={{ shrink: true }}
                             required
+                            helperText={errors[`subject_${subIdx}_date`]}
+                            error={!!errors[`subject_${subIdx}_date`]}
                           />
                           <TextField
                             label="Start Time"
                             type="time"
                             value={subject.startTime}
-                            onChange={(e) => handleSubjectChange(subIdx, 'startTime', e.target.value)}
+                            onChange={(e) => {
+                              handleSubjectChange(subIdx, 'startTime', e.target.value);
+                              if (errors[`subject_${subIdx}_time`]) {
+                                setErrors(prev => ({ ...prev, [`subject_${subIdx}_time`]: null }));
+                              }
+                            }}
                             InputLabelProps={{ shrink: true }}
                             required
+                            helperText={errors[`subject_${subIdx}_time`]}
+                            error={!!errors[`subject_${subIdx}_time`]}
                           />
                           <TextField
                             label="Duration (min)"
                             type="number"
                             value={subject.duration}
-                            onChange={(e) => handleSubjectChange(subIdx, 'duration', e.target.value)}
+                            onChange={(e) => handleSubjectChange(subIdx, 'duration', Math.max(30, Math.min(480, parseInt(e.target.value) || 30)))}
+                            inputProps={{ min: 30, max: 480, step: 15 }}
+                            helperText="30-480 minutes"
                           />
                         </Box>
                         <TextField
                           label="Room Number"
                           value={subject.roomNumber}
                           onChange={(e) => handleSubjectChange(subIdx, 'roomNumber', e.target.value)}
+                          inputProps={{ maxLength: 20 }}
+                          helperText="Optional - max 20 characters"
                         />
                         <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 2 }}>
                           <TextField
                             label="Max Marks"
                             type="number"
                             value={subject.maxMarks}
-                            onChange={(e) => handleSubjectChange(subIdx, 'maxMarks', e.target.value)}
+                            onChange={(e) => handleSubjectChange(subIdx, 'maxMarks', Math.max(1, Math.min(1000, parseInt(e.target.value) || 1)))}
+                            inputProps={{ min: 1, max: 1000 }}
+                            helperText="1-1000"
+                            required
                           />
                           <TextField
                             label="Total Marks"
                             type="number"
                             value={subject.totalMarks}
-                            onChange={(e) => handleSubjectChange(subIdx, 'totalMarks', e.target.value)}
+                            onChange={(e) => handleSubjectChange(subIdx, 'totalMarks', Math.max(1, Math.min(1000, parseInt(e.target.value) || 1)))}
+                            inputProps={{ min: 1, max: 1000 }}
+                            helperText="1-1000"
+                            required
                           />
                           <TextField
                             label="Passing Marks"
                             type="number"
                             value={subject.passingMarks}
-                            onChange={(e) => handleSubjectChange(subIdx, 'passingMarks', e.target.value)}
+                            onChange={(e) => handleSubjectChange(subIdx, 'passingMarks', Math.max(0, Math.min(subject.totalMarks, parseInt(e.target.value) || 0)))}
+                            inputProps={{ min: 0, max: subject.totalMarks }}
+                            helperText={`0-${subject.totalMarks}`}
+                            required
                           />
                         </Box>
 
@@ -856,75 +1124,95 @@ export function ExamControllerExaminationsPageNew() {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {students.map((student) => {
-                      const result = results.find(r => r.studentId?._id === student._id);
-                      return (
-                        <TableRow key={student._id}>
-                          <TableCell>{student.rollNumber}</TableCell>
-                          <TableCell>{student.userId?.firstName} {student.userId?.lastName}</TableCell>
-                          <TableCell>{student.class}-{student.section}</TableCell>
-                          <TableCell>
-                            {result ? `${result.totalMarksObtained}/${result.totalMaxMarks}` : '-'}
-                          </TableCell>
-                          <TableCell>{result?.overallGrade || '-'}</TableCell>
-                          <TableCell>
-                            {result ? (
-                              <Chip 
-                                label={result.isDraft ? 'Draft' : result.overallStatus} 
-                                size="small"
-                                color={result.overallStatus === 'Pass' ? 'success' : 'error'}
-                              />
-                            ) : '-'}
-                          </TableCell>
-                          <TableCell>
-                            {result && !result.isDraft ? (
-                              <Chip 
-                                label={result.approvalStatus || 'pending'} 
-                                size="small"
-                                color={
-                                  result.approvalStatus === 'approved' ? 'success' : 
-                                  result.approvalStatus === 'rejected' ? 'error' : 'warning'
-                                }
-                              />
-                            ) : '-'}
-                          </TableCell>
-                          <TableCell>
-                            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                              <Button
-                                size="small"
-                                variant="contained"
-                                onClick={() => handleSubmitMarks(student)}
-                              >
-                                {result ? 'Edit' : 'Submit'} Marks
-                              </Button>
-                              {result && !result.isDraft && result.approvalStatus === 'pending' && (
-                                <>
-                                  <Button
-                                    size="small"
-                                    variant="contained"
-                                    color="success"
-                                    onClick={() => handleApproveResult(result._id)}
-                                  >
-                                    Approve
-                                  </Button>
-                                  <Button
-                                    size="small"
-                                    variant="outlined"
-                                    color="error"
-                                    onClick={() => handleRejectResult(result._id)}
-                                  >
-                                    Reject
-                                  </Button>
-                                </>
-                              )}
-                            </Box>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
+                    {(() => {
+                      const currentPage = studentPages['results'] || 1;
+                      const studentsPerPage = 10;
+                      const startIndex = (currentPage - 1) * studentsPerPage;
+                      const endIndex = startIndex + studentsPerPage;
+                      const paginatedStudents = students.slice(startIndex, endIndex);
+                      
+                      return paginatedStudents.map((student) => {
+                        const result = results.find(r => r.studentId?._id === student._id);
+                        return (
+                          <TableRow key={student._id}>
+                            <TableCell>{student.rollNumber}</TableCell>
+                            <TableCell>{student.userId?.firstName} {student.userId?.lastName}</TableCell>
+                            <TableCell>{student.class}-{student.section}</TableCell>
+                            <TableCell>
+                              {result ? `${result.totalMarksObtained}/${result.totalMaxMarks}` : '-'}
+                            </TableCell>
+                            <TableCell>{result?.overallGrade || '-'}</TableCell>
+                            <TableCell>
+                              {result ? (
+                                <Chip 
+                                  label={result.isDraft ? 'Draft' : result.overallStatus} 
+                                  size="small"
+                                  color={result.overallStatus === 'Pass' ? 'success' : 'error'}
+                                />
+                              ) : '-'}
+                            </TableCell>
+                            <TableCell>
+                              {result && !result.isDraft ? (
+                                <Chip 
+                                  label={result.approvalStatus || 'pending'} 
+                                  size="small"
+                                  color={
+                                    result.approvalStatus === 'approved' ? 'success' : 
+                                    result.approvalStatus === 'rejected' ? 'error' : 'warning'
+                                  }
+                                />
+                              ) : '-'}
+                            </TableCell>
+                            <TableCell>
+                              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                                <Button
+                                  size="small"
+                                  variant="contained"
+                                  onClick={() => handleSubmitMarks(student)}
+                                >
+                                  {result ? 'Edit' : 'Submit'} Marks
+                                </Button>
+                                {result && !result.isDraft && result.approvalStatus === 'pending' && (
+                                  <>
+                                    <Button
+                                      size="small"
+                                      variant="contained"
+                                      color="success"
+                                      onClick={() => handleApproveResult(result._id)}
+                                    >
+                                      Approve
+                                    </Button>
+                                    <Button
+                                      size="small"
+                                      variant="outlined"
+                                      color="error"
+                                      onClick={() => handleRejectResult(result._id)}
+                                    >
+                                      Reject
+                                    </Button>
+                                  </>
+                                )}
+                              </Box>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      });
+                    })()}
                   </TableBody>
                 </Table>
               </TableContainer>
+              
+              {students.length > 10 && (
+                <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
+                  <Pagination
+                    count={Math.ceil(students.length / 10)}
+                    page={studentPages['results'] || 1}
+                    onChange={(event, value) => setStudentPages(prev => ({ ...prev, results: value }))}
+                    color="primary"
+                    size="medium"
+                  />
+                </Box>
+              )}
             </DialogContent>
             <DialogActions>
               <Button onClick={() => setOpenResultDialog(false)}>Close</Button>

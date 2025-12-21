@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Box, Container, Paper, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Chip, LinearProgress, Collapse, IconButton } from '@mui/material';
+import React, { useState, useEffect } from 'react';
+import { Box, Container, Paper, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Chip, LinearProgress, Collapse, IconButton, MenuItem, Pagination } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -9,6 +9,8 @@ import TrendingDownIcon from '@mui/icons-material/TrendingDown';
 import PrintIcon from '@mui/icons-material/Print';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
+import SearchIcon from '@mui/icons-material/Search';
+import FilterListIcon from '@mui/icons-material/FilterList';
 import { useAuth } from '../hooks/useAuth.js';
 import { Header } from '../components/common/Header.jsx';
 import { Sidebar } from '../components/common/Sidebar.jsx';
@@ -19,7 +21,7 @@ import { StudentDetailsModal } from '../components/StudentDetailsModal.jsx';
 import { LoadingBar } from '../components/common/LoadingBar.jsx';
 
 export function StudentsPage() {
-  const { user } = useAuth();
+  const { user, token, loading: authLoading } = useAuth();
   const [classes, setClasses] = useState([]);
   const [expandedClass, setExpandedClass] = useState(null);
   const [classStudents, setClassStudents] = useState({});
@@ -30,6 +32,12 @@ export function StudentsPage() {
   const [selectedStudentId, setSelectedStudentId] = useState(null);
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [studentPages, setStudentPages] = useState({});
+  const [filterClass, setFilterClass] = useState('');
+  const [filterSection, setFilterSection] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [availableClasses, setAvailableClasses] = useState([]);
+  const [availableSections, setAvailableSections] = useState([]);
   const { showNotification, NotificationComponent } = useNotification();
   const [formData, setFormData] = useState({
     firstName: '',
@@ -45,19 +53,116 @@ export function StudentsPage() {
   });
 
   useEffect(() => {
-    fetchClasses();
-  }, []);
+    if (!authLoading && user && token) {
+      fetchClasses();
+    } else if (!authLoading && (!user || !token)) {
+      setLoading(false);
+      showNotification('Please log in to access this page', 'error');
+    }
+  }, [authLoading, user, token]);
 
   const fetchClasses = async () => {
     try {
       setLoading(true);
       const response = await studentService.getStudentsByClass();
-      setClasses(response.data.classes || []);
+      const classesData = response.data.classes || [];
+      setClasses(classesData);
+      
+      // Extract unique classes and sections
+      const uniqueClasses = [...new Set(classesData.map(c => c.class))].sort();
+      const uniqueSections = [...new Set(classesData.map(c => c.section))].sort();
+      setAvailableClasses(uniqueClasses);
+      setAvailableSections(uniqueSections);
     } catch (error) {
       showNotification('Error fetching classes', 'error');
       console.error('Error:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadStudentsPage = async (classItem, page = 1) => {
+    const key = `${classItem.class}-${classItem.section}`;
+    try {
+      const response = await studentService.getAllStudents({ 
+        class: classItem.class, 
+        section: classItem.section,
+        page,
+        limit: 9
+      });
+      
+      console.log(`Loading students for class ${classItem.class}-${classItem.section}, page ${page}:`, {
+        studentsCount: response.data.students?.length || 0,
+        totalCount: response.data.totalCount,
+        page: page
+      });
+      
+      const studentsReceived = response.data.students || [];
+      let totalCount = response.data.totalCount;
+      
+      // If totalCount is undefined, get actual count from API
+      if (totalCount === undefined || totalCount === null) {
+        try {
+          // Get all students to count them properly
+          const allStudentsResponse = await studentService.getAllStudents({ 
+            class: classItem.class, 
+            section: classItem.section,
+            page: 1,
+            limit: 1000 // Large limit to get all students
+          });
+          totalCount = allStudentsResponse.data.students?.length || studentsReceived.length;
+        } catch (error) {
+          // Fallback to current page logic
+          const existingData = classStudents[key];
+          if (page === 1 && studentsReceived.length === 9) {
+            totalCount = 10;
+          } else if (page > 1 && existingData?.totalCount) {
+            totalCount = existingData.totalCount;
+          } else {
+            totalCount = studentsReceived.length;
+          }
+        }
+      }
+      
+      const enrichedStudents = await Promise.all(
+        studentsReceived.map(async (student) => {
+          try {
+            const [feesRes, attendanceRes, resultsRes] = await Promise.all([
+              feeService.getAllFees({ studentId: student._id, limit: 100 }).catch(() => ({ data: { fees: [] } })),
+              attendanceService.getAttendanceReport(student._id).catch(() => ({ data: { report: { percentage: 0 } } })),
+              examinationService.getStudentResults(student._id).catch(() => ({ data: { results: [] } }))
+            ]);
+            
+            const fees = feesRes.data.fees || [];
+            const feeStatus = fees.length === 0 ? 'Unpaid' : (fees.every(f => f.status === 'Paid') ? 'Paid' : 'Unpaid');
+            const attendancePercentage = attendanceRes.data.report?.percentage || 0;
+            
+            const results = resultsRes.data.results || [];
+            let performance = 'stable';
+            if (results.length >= 2) {
+              const latest = results[0]?.percentage || 0;
+              const previous = results[1]?.percentage || 0;
+              if (latest > previous + 5) performance = 'up';
+              else if (latest < previous - 5) performance = 'down';
+            }
+            
+            return { ...student, feeStatus, attendancePercentage, performance };
+          } catch {
+            return { ...student, feeStatus: 'Unknown', attendancePercentage: 0, performance: 'stable' };
+          }
+        })
+      );
+      
+      setClassStudents(prev => ({ 
+        ...prev, 
+        [key]: {
+          students: enrichedStudents,
+          totalCount: totalCount,
+          currentPage: page
+        }
+      }));
+    } catch (error) {
+      showNotification('Error fetching students', 'error');
     }
   };
 
@@ -72,47 +177,14 @@ export function StudentsPage() {
     setExpandedClass(key);
     
     if (!classStudents[key]) {
-      try {
-        const response = await studentService.getAllStudents({ 
-          class: classItem.class, 
-          section: classItem.section,
-          limit: 100
-        });
-        
-        const enrichedStudents = await Promise.all(
-          response.data.students.map(async (student) => {
-            try {
-              const [feesRes, attendanceRes, resultsRes] = await Promise.all([
-                feeService.getAllFees({ studentId: student._id, limit: 100 }).catch(() => ({ data: { fees: [] } })),
-                attendanceService.getAttendanceReport(student._id).catch(() => ({ data: { report: { percentage: 0 } } })),
-                examinationService.getStudentResults(student._id).catch(() => ({ data: { results: [] } }))
-              ]);
-              
-              const fees = feesRes.data.fees || [];
-              const feeStatus = fees.length === 0 ? 'Unpaid' : (fees.every(f => f.status === 'Paid') ? 'Paid' : 'Unpaid');
-              const attendancePercentage = attendanceRes.data.report?.percentage || 0;
-              
-              const results = resultsRes.data.results || [];
-              let performance = 'stable';
-              if (results.length >= 2) {
-                const latest = results[0]?.percentage || 0;
-                const previous = results[1]?.percentage || 0;
-                if (latest > previous + 5) performance = 'up';
-                else if (latest < previous - 5) performance = 'down';
-              }
-              
-              return { ...student, feeStatus, attendancePercentage, performance };
-            } catch {
-              return { ...student, feeStatus: 'Unknown', attendancePercentage: 0, performance: 'stable' };
-            }
-          })
-        );
-        
-        setClassStudents(prev => ({ ...prev, [key]: enrichedStudents }));
-      } catch (error) {
-        showNotification('Error fetching students', 'error');
-      }
+      await loadStudentsPage(classItem, 1);
     }
+  };
+
+  const handlePageChange = async (classItem, page) => {
+    const key = `${classItem.class}-${classItem.section}`;
+    setStudentPages(prev => ({ ...prev, [key]: page }));
+    await loadStudentsPage(classItem, page);
   };
 
   const handleOpenDialog = (student = null) => {
@@ -220,7 +292,29 @@ export function StudentsPage() {
     }
   };
 
-  if (loading) return <LoadingBar />;
+  if (authLoading || loading) return <LoadingBar />;
+
+  if (!user || !token) {
+    return (
+      <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: 'background.default' }}>
+        <Sidebar mobileOpen={mobileOpen} onMobileClose={() => setMobileOpen(false)} />
+        <Box sx={{ flex: 1 }}>
+          <Header onMobileMenuToggle={() => setMobileOpen(!mobileOpen)} />
+          <Container maxWidth="lg" sx={{ py: 4 }}>
+            <Box sx={{ textAlign: 'center', mt: 8 }}>
+              <Typography variant="h5" color="error" gutterBottom>
+                Authentication Required
+              </Typography>
+              <Typography variant="body1" color="textSecondary">
+                Please log in to access the Students page.
+              </Typography>
+            </Box>
+            <NotificationComponent />
+          </Container>
+        </Box>
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: 'background.default' }}>
@@ -232,15 +326,70 @@ export function StudentsPage() {
             <Typography variant="h4" sx={{ fontWeight: 'bold' }}>
               Students by Class
             </Typography>
-            <Box sx={{ display: 'flex', gap: 2 }}>
-              <Button variant="outlined" startIcon={<CloudUploadIcon />} onClick={() => setOpenBulkUpload(true)}>
-                Bulk Upload
-              </Button>
-              <Button variant="contained" startIcon={<AddIcon />} onClick={() => handleOpenDialog()}>
-                Add Student
+            {user?.role !== 'teacher' && (
+              <Box sx={{ display: 'flex', gap: 2 }}>
+                <Button variant="outlined" startIcon={<CloudUploadIcon />} onClick={() => setOpenBulkUpload(true)}>
+                  Bulk Upload
+                </Button>
+                <Button variant="contained" startIcon={<AddIcon />} onClick={() => handleOpenDialog()}>
+                  Add Student
+                </Button>
+              </Box>
+            )}
+          </Box>
+
+          {/* Filter Section */}
+          <Paper sx={{ p: 3, mb: 3, boxShadow: 1 }}>
+            <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <FilterListIcon color="primary" />
+              Filter Students
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+              <TextField
+                label="Search Student"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                size="small"
+                sx={{ minWidth: 200 }}
+                InputProps={{
+                  startAdornment: <SearchIcon sx={{ mr: 1, color: 'text.secondary' }} />
+                }}
+              />
+              <TextField
+                label="Class"
+                select
+                value={filterClass}
+                onChange={(e) => setFilterClass(e.target.value)}
+                sx={{ minWidth: 120 }}
+                size="small"
+              >
+                <MenuItem value="">All Classes</MenuItem>
+                {availableClasses.map((cls) => (
+                  <MenuItem key={cls} value={cls}>{cls}</MenuItem>
+                ))}
+              </TextField>
+              <TextField
+                label="Section"
+                select
+                value={filterSection}
+                onChange={(e) => setFilterSection(e.target.value)}
+                sx={{ minWidth: 120 }}
+                size="small"
+              >
+                <MenuItem value="">All Sections</MenuItem>
+                {availableSections.map((section) => (
+                  <MenuItem key={section} value={section}>{section}</MenuItem>
+                ))}
+              </TextField>
+              <Button 
+                variant="outlined" 
+                onClick={() => { setFilterClass(''); setFilterSection(''); setSearchTerm(''); }}
+                size="small"
+              >
+                Clear Filters
               </Button>
             </Box>
-          </Box>
+          </Paper>
 
           <TableContainer component={Paper} sx={{ boxShadow: 2 }}>
             <Table>
@@ -254,14 +403,30 @@ export function StudentsPage() {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {classes.map((classItem) => {
-                  const key = `${classItem.class}-${classItem.section}`;
-                  const isExpanded = expandedClass === key;
-                  const students = classStudents[key] || [];
+                {(() => {
+                  const filteredClasses = classes.filter(classItem => {
+                    if (filterClass && classItem.class !== filterClass) return false;
+                    if (filterSection && classItem.section !== filterSection) return false;
+                    if (searchTerm) {
+                      const students = classStudents[`${classItem.class}-${classItem.section}`] || [];
+                      const hasMatchingStudent = students.some(student => 
+                        `${student.userId?.firstName} ${student.userId?.lastName}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        student.rollNumber?.toString().includes(searchTerm) ||
+                        student.studentId?.toLowerCase().includes(searchTerm.toLowerCase())
+                      );
+                      if (!hasMatchingStudent) return false;
+                    }
+                    return true;
+                  });
                   
-                  return (
-                    <>
-                      <TableRow key={key} hover sx={{ cursor: 'pointer' }}>
+                  return filteredClasses.map((classItem) => {
+                    const key = `${classItem.class}-${classItem.section}`;
+                    const isExpanded = expandedClass === key;
+                    const students = classStudents[key] || [];
+                    
+                    return (
+                      <React.Fragment key={key}>
+                        <TableRow hover sx={{ cursor: 'pointer' }}>
                         <TableCell>
                           <IconButton size="small" onClick={() => handleExpandClass(classItem)}>
                             {isExpanded ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
@@ -290,47 +455,65 @@ export function StudentsPage() {
                               <Typography variant="h6" gutterBottom>
                                 Students in Class {classItem.class} - {classItem.section}
                               </Typography>
-                              <Table size="small">
-                                <TableHead sx={{ backgroundColor: '#f9f9f9' }}>
-                                  <TableRow>
-                                    <TableCell>Student ID</TableCell>
-                                    <TableCell>Name</TableCell>
-                                    <TableCell>Roll No</TableCell>
-                                    <TableCell>Gender</TableCell>
-                                    <TableCell>Fee Status</TableCell>
-                                    <TableCell>Attendance</TableCell>
-                                    <TableCell>Performance</TableCell>
-                                    <TableCell>Actions</TableCell>
-                                  </TableRow>
-                                </TableHead>
-                                <TableBody>
-                                  {students.map((student) => (
-                                    <TableRow key={student._id} hover>
-                                      <TableCell 
-                                        sx={{ fontWeight: 'bold', color: '#1976d2', cursor: 'pointer' }}
-                                        onClick={() => {
-                                          setSelectedStudentId(student._id);
-                                          setDetailsModalOpen(true);
-                                        }}
-                                      >
-                                        {student.studentId || 'N/A'}
-                                      </TableCell>
-                                      <TableCell>{student.userId?.firstName} {student.userId?.lastName}</TableCell>
-                                      <TableCell>{student.rollNumber}</TableCell>
-                                      <TableCell>{student.gender}</TableCell>
-                                      <TableCell>
+                              
+                              <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 2 }}>
+                                {(() => {
+                                  const classData = classStudents[key];
+                                  if (!classData || !classData.students) return [];
+                                  
+                                  let displayStudents = classData.students;
+                                  if (searchTerm) {
+                                    displayStudents = classData.students.filter(student => 
+                                      `${student.userId?.firstName} ${student.userId?.lastName}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                      student.rollNumber?.toString().includes(searchTerm) ||
+                                      student.studentId?.toLowerCase().includes(searchTerm.toLowerCase())
+                                    );
+                                  }
+                                  
+                                  const sortedStudents = displayStudents.sort((a, b) => {
+                                    const rollA = parseInt(a.rollNumber) || 0;
+                                    const rollB = parseInt(b.rollNumber) || 0;
+                                    return rollA - rollB;
+                                  });
+                                  
+                                  return sortedStudents.map((student) => (
+                                    <Box key={student._id} sx={{ 
+                                      p: 2, 
+                                      bgcolor: student.feeStatus === 'Paid' ? '#f0f8f0' : '#fff8f0',
+                                      borderRadius: 1, 
+                                      border: '1px solid', 
+                                      borderColor: student.feeStatus === 'Paid' ? '#4caf50' : '#ff9800',
+                                      display: 'flex',
+                                      flexDirection: 'column',
+                                      gap: 1
+                                    }}>
+                                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+                                        <Box>
+                                          <Typography variant="subtitle2" sx={{ fontWeight: 'bold', cursor: 'pointer', color: '#1976d2' }}
+                                            onClick={() => {
+                                              setSelectedStudentId(student._id);
+                                              setDetailsModalOpen(true);
+                                            }}
+                                          >
+                                            {student.userId?.firstName} {student.userId?.lastName}
+                                          </Typography>
+                                          <Typography variant="caption" color="textSecondary">
+                                            Roll: {student.rollNumber} | ID: {student.studentId || 'N/A'}
+                                          </Typography>
+                                          <Typography variant="caption" color="textSecondary" sx={{ display: 'block' }}>
+                                            {student.gender}
+                                          </Typography>
+                                        </Box>
                                         <Chip 
                                           label={student.feeStatus || 'Unknown'} 
                                           size="small"
-                                          sx={{ 
-                                            bgcolor: student.feeStatus === 'Paid' ? '#c8e6c9' : '#ffccbc',
-                                            color: student.feeStatus === 'Paid' ? '#2e7d32' : '#d32f2f',
-                                            fontWeight: 'bold'
-                                          }}
+                                          color={student.feeStatus === 'Paid' ? 'success' : 'warning'}
                                         />
-                                      </TableCell>
-                                      <TableCell>
+                                      </Box>
+                                      
+                                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                          <Typography variant="caption">Attendance:</Typography>
                                           <LinearProgress 
                                             variant="determinate" 
                                             value={student.attendancePercentage || 0} 
@@ -348,42 +531,79 @@ export function StudentsPage() {
                                             {student.attendancePercentage || 0}%
                                           </Typography>
                                         </Box>
-                                      </TableCell>
-                                      <TableCell>
+                                        
                                         {student.performance === 'up' && (
-                                          <Chip icon={<TrendingUpIcon />} label="Up" size="small" sx={{ bgcolor: '#c8e6c9', color: '#2e7d32' }} />
+                                          <Chip icon={<TrendingUpIcon />} label="Up" size="small" color="success" />
                                         )}
                                         {student.performance === 'down' && (
-                                          <Chip icon={<TrendingDownIcon />} label="Down" size="small" sx={{ bgcolor: '#ffccbc', color: '#d32f2f' }} />
+                                          <Chip icon={<TrendingDownIcon />} label="Down" size="small" color="error" />
                                         )}
                                         {student.performance === 'stable' && (
-                                          <Chip label="Stable" size="small" sx={{ bgcolor: '#e3f2fd', color: '#1976d2' }} />
+                                          <Chip label="Stable" size="small" color="primary" />
                                         )}
-                                      </TableCell>
-                                      <TableCell>
-                                        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                                          <Button size="small" startIcon={<PrintIcon />} onClick={() => handleGenerateAdmitCard(student)} variant="outlined">
-                                            Admit
-                                          </Button>
-                                          <Button size="small" startIcon={<EditIcon />} onClick={() => handleOpenDialog(student)}>
-                                            Edit
-                                          </Button>
-                                          <Button size="small" startIcon={<DeleteIcon />} color="error" onClick={() => handleDelete(student._id)}>
-                                            Delete
-                                          </Button>
-                                        </Box>
-                                      </TableCell>
-                                    </TableRow>
-                                  ))}
-                                </TableBody>
-                              </Table>
+                                      </Box>
+                                      
+                                      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 1 }}>
+                                        <Button size="small" startIcon={<PrintIcon />} onClick={() => handleGenerateAdmitCard(student)} variant="outlined">
+                                          Admit
+                                        </Button>
+                                        {user?.role !== 'teacher' && (
+                                          <>
+                                            <Button size="small" startIcon={<EditIcon />} onClick={() => handleOpenDialog(student)}>
+                                              Edit
+                                            </Button>
+                                            <Button size="small" startIcon={<DeleteIcon />} color="error" onClick={() => handleDelete(student._id)}>
+                                              Delete
+                                            </Button>
+                                          </>
+                                        )}
+                                      </Box>
+                                    </Box>
+                                  ));
+                                })()}
+                              </Box>
+                              
+                              {(() => {
+                                const classData = classStudents[key];
+                                if (!classData) return null;
+                                
+                                const totalPages = Math.ceil(classData.totalCount / 9);
+                                const currentPage = studentPages[key] || 1;
+                                
+                                if (totalPages > 1) return (
+                                  <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 2, mt: 3 }}>
+                                    <Button
+                                      size="small"
+                                      variant="outlined"
+                                      disabled={currentPage === 1}
+                                      onClick={() => handlePageChange(classItem, Math.max(1, currentPage - 1))}
+                                    >
+                                      Previous
+                                    </Button>
+                                    <Typography variant="body2">
+                                      Page {currentPage} of {totalPages}
+                                    </Typography>
+                                    <Button
+                                      size="small"
+                                      variant="outlined"
+                                      disabled={currentPage >= totalPages}
+                                      onClick={() => handlePageChange(classItem, Math.min(totalPages, currentPage + 1))}
+                                    >
+                                      Next
+                                    </Button>
+                                  </Box>
+                                );
+                                
+                                return null;
+                              })()}
                             </Box>
                           </Collapse>
                         </TableCell>
-                      </TableRow>
-                    </>
-                  );
-                })}
+                        </TableRow>
+                      </React.Fragment>
+                    );
+                  });
+                })()}
               </TableBody>
             </Table>
           </TableContainer>
@@ -414,7 +634,9 @@ export function StudentsPage() {
             </DialogActions>
           </Dialog>
 
-          <BulkStudentUpload open={openBulkUpload} onClose={() => setOpenBulkUpload(false)} onSuccess={fetchClasses} />
+          {user?.role !== 'teacher' && (
+            <BulkStudentUpload open={openBulkUpload} onClose={() => setOpenBulkUpload(false)} onSuccess={fetchClasses} />
+          )}
           <StudentDetailsModal open={detailsModalOpen} onClose={() => setDetailsModalOpen(false)} studentId={selectedStudentId} />
           <NotificationComponent />
         </Container>
